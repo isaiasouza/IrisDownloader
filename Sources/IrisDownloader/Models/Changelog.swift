@@ -1,0 +1,63 @@
+import Foundation
+
+struct ChangelogFeature {
+    let icon: String
+    let title: String
+    let description: String
+}
+
+struct ChangelogEntry: Identifiable {
+    var id: String { version }
+    let version: String
+    let date: String
+    let features: [ChangelogFeature]
+}
+
+enum Changelog {
+    /// Adicione uma nova entrada aqui a cada atualização do app.
+    /// O What's New sheet irá mostrar a entrada correspondente à versão atual.
+    static let all: [ChangelogEntry] = [
+        ChangelogEntry(
+            version: "1.4",
+            date: "Mar 2026",
+            features: [
+                ChangelogFeature(
+                    icon: "folder.badge.plus",
+                    title: "Preservar Estrutura de Pastas",
+                    description: "Ao baixar uma pasta do Drive, o app agora cria automaticamente a subpasta com o nome original no destino — mantendo sua organização intacta."
+                ),
+                ChangelogFeature(
+                    icon: "star.fill",
+                    title: "Novidades em destaque",
+                    description: "A partir de agora, você verá este resumo sempre que o app for atualizado com novas funções."
+                )
+            ]
+        ),
+        ChangelogEntry(
+            version: "1.3",
+            date: "Fev 2026",
+            features: [
+                ChangelogFeature(
+                    icon: "clock.badge.checkmark",
+                    title: "Retenção de Histórico",
+                    description: "Configure por quanto tempo o histórico de downloads é mantido — 7, 30, 90 dias ou sem limite."
+                ),
+                ChangelogFeature(
+                    icon: "arrow.triangle.2.circlepath",
+                    title: "Auto-Retry em Falhas",
+                    description: "Downloads com falha são automaticamente tentados de novo com backoff exponencial."
+                ),
+                ChangelogFeature(
+                    icon: "externaldrive.fill",
+                    title: "Múltiplas Contas Drive",
+                    description: "Adicione e alterne entre várias contas do Google Drive diretamente nas configurações."
+                )
+            ]
+        )
+    ]
+
+    /// Retorna a entrada do changelog para a versão fornecida, se existir.
+    static func entry(for version: String) -> ChangelogEntry? {
+        all.first { $0.version == version }
+    }
+}

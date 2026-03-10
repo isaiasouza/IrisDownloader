@@ -2,14 +2,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "DriveDownloader",
+    name: "IrisDownloader",
     platforms: [
         .macOS(.v14)
     ],
     targets: [
         .executableTarget(
-            name: "DriveDownloader",
-            path: "Sources/DriveDownloader"
+            name: "IrisDownloader",
+            path: "Sources/IrisDownloader"
         )
     ]
 )
