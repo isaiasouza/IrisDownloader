@@ -18,7 +18,7 @@ struct AppSettings: Codable {
     var preserveDriveStructure: Bool  // true = cria subpasta com nome da pasta do Drive no destino
     var lastSeenVersion: String?  // última versão cujo What's New foi exibido
 
-    static let appVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.4"
+    static let appVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.5"
 
     init(
         defaultDestination: String,

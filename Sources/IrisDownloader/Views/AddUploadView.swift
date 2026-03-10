@@ -15,6 +15,10 @@ struct AddUploadView: View {
     @State private var showDriveBrowser = false
     @State private var showDuplicateAlert = false
     @State private var duplicatePaths: [String] = []
+    @State private var showNewDriveFolder = false
+    @State private var newDriveFolderName = ""
+    @State private var isCreatingFolder = false
+    @State private var folderCreateError: String? = nil
 
     var body: some View {
         VStack(spacing: 20) {
@@ -132,6 +136,64 @@ struct AddUploadView: View {
                             .fill(AppTheme.accent.opacity(0.08))
                             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(AppTheme.accent.opacity(0.2)))
                     )
+
+                    // New Folder inline UI
+                    if showNewDriveFolder {
+                        HStack(spacing: 8) {
+                            Image(systemName: "folder.badge.plus")
+                                .foregroundColor(AppTheme.accent)
+                                .font(AppTheme.font(size: 14))
+
+                            TextField("Nome da nova pasta...", text: $newDriveFolderName)
+                                .textFieldStyle(.roundedBorder)
+                                .font(AppTheme.font(size: 12))
+                                .onSubmit { createDriveFolder() }
+
+                            if isCreatingFolder {
+                                ProgressView()
+                                    .scaleEffect(0.6)
+                                    .frame(width: 16, height: 16)
+                            } else {
+                                Button(action: createDriveFolder) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(AppTheme.success)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(newDriveFolderName.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                                Button {
+                                    showNewDriveFolder = false
+                                    newDriveFolderName = ""
+                                    folderCreateError = nil
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(AppTheme.textMuted)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+
+                        if let err = folderCreateError {
+                            Text(err)
+                                .font(AppTheme.font(size: 11))
+                                .foregroundColor(AppTheme.error)
+                        }
+                    } else {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showNewDriveFolder = true
+                            }
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "folder.badge.plus")
+                                Text("Nova Pasta")
+                            }
+                            .font(AppTheme.font(size: 11, weight: .medium))
+                            .foregroundColor(AppTheme.accent)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
 
                 HStack(spacing: 8) {
@@ -352,5 +414,37 @@ struct AddUploadView: View {
             }
         }
         dismiss()
+    }
+
+    private func createDriveFolder() {
+        let name = newDriveFolderName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+
+        isCreatingFolder = true
+        folderCreateError = nil
+
+        let parentID = driveFolderID
+        let remote = manager.settings.rcloneRemoteName
+        let rclonePath = manager.settings.rclonePath
+
+        Task {
+            do {
+                let service = RcloneService(rclonePath: rclonePath, remoteName: remote)
+                let newID = try await service.createFolder(name: name, parentID: parentID)
+
+                await MainActor.run {
+                    driveFolderName = "\(driveFolderName)/\(name)"
+                    driveFolderID = newID
+                    newDriveFolderName = ""
+                    showNewDriveFolder = false
+                    isCreatingFolder = false
+                }
+            } catch {
+                await MainActor.run {
+                    folderCreateError = "Erro ao criar pasta: \(error.localizedDescription)"
+                    isCreatingFolder = false
+                }
+            }
+        }
     }
 }

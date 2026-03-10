@@ -18,6 +18,22 @@ enum Changelog {
     /// O What's New sheet irá mostrar a entrada correspondente à versão atual.
     static let all: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "1.5",
+            date: "Mar 2026",
+            features: [
+                ChangelogFeature(
+                    icon: "folder.badge.plus",
+                    title: "Criar Pasta no Drive",
+                    description: "Ao enviar arquivos, crie uma nova subpasta diretamente no Google Drive sem sair do app."
+                ),
+                ChangelogFeature(
+                    icon: "plus.rectangle.on.folder",
+                    title: "Criar Pasta no Finder",
+                    description: "Ao baixar, crie uma nova pasta local no Finder e use-a como destino do download em segundos."
+                )
+            ]
+        ),
+        ChangelogEntry(
             version: "1.4",
             date: "Mar 2026",
             features: [

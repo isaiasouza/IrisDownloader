@@ -204,7 +204,39 @@ final class RcloneService {
         }
     }
 
+    /// Create a new folder inside a Drive folder and return its ID.
+    func createFolder(name: String, parentID: String) async throws -> String {
+        let mkResult = try await runProcess(args: [
+            "mkdir",
+            "\(remoteName):\(name)",
+            "--drive-root-folder-id", parentID
+        ])
+
+        guard mkResult.status == 0 else {
+            throw RcloneError.downloadFailed(Int(mkResult.status))
+        }
+
+        // List children of parent to find the new folder's ID
+        let listResult = try await runProcess(args: [
+            "lsjson",
+            "\(remoteName):",
+            "--drive-root-folder-id", parentID,
+            "--dirs-only"
+        ])
+
+        if listResult.status == 0,
+           let data = listResult.output.data(using: .utf8),
+           let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+           let match = items.first(where: { ($0["Name"] as? String) == name }),
+           let id = match["ID"] as? String {
+            return id
+        }
+
+        return parentID  // fallback: upload to parent
+    }
+
     /// Start a download process and return the Process handle
+
     /// - Parameter folderName: When provided, files are placed inside `destinationPath/folderName`,
     ///   preserving the Drive folder structure instead of copying contents flat into `destinationPath`.
     func startDownload(

@@ -11,6 +11,9 @@ struct AddDownloadView: View {
     @State private var showDuplicateAlert: Bool = false
     @State private var duplicateLinks: [(link: String, parsed: ParsedDriveLink)] = []
     @State private var showSelectiveDownload: Bool = false
+    @State private var showNewLocalFolder: Bool = false
+    @State private var newLocalFolderName: String = ""
+    @State private var newLocalFolderError: String? = nil
 
     private var validLinks: [(link: String, parsed: ParsedDriveLink)] {
         linksText
@@ -135,6 +138,58 @@ struct AddDownloadView: View {
                         Button("Escolher...") {
                             chooseFolder()
                         }
+                    }
+
+                    // New folder inline
+                    if showNewLocalFolder {
+                        HStack(spacing: 8) {
+                            Image(systemName: "folder.badge.plus")
+                                .foregroundColor(AppTheme.accent)
+                                .font(AppTheme.font(size: 13))
+
+                            TextField("Nome da nova pasta...", text: $newLocalFolderName)
+                                .textFieldStyle(.roundedBorder)
+                                .font(AppTheme.font(size: 12))
+                                .onSubmit { createLocalFolder() }
+
+                            Button(action: createLocalFolder) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(AppTheme.success)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(newLocalFolderName.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                            Button {
+                                showNewLocalFolder = false
+                                newLocalFolderName = ""
+                                newLocalFolderError = nil
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(AppTheme.textMuted)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+
+                        if let err = newLocalFolderError {
+                            Text(err)
+                                .font(AppTheme.font(size: 11))
+                                .foregroundColor(AppTheme.error)
+                        }
+                    } else {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showNewLocalFolder = true
+                            }
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "folder.badge.plus")
+                                Text("Nova Pasta")
+                            }
+                            .font(AppTheme.font(size: 11, weight: .medium))
+                            .foregroundColor(AppTheme.accent)
+                        }
+                        .buttonStyle(.plain)
                     }
                 } else {
                     HStack(spacing: 4) {
@@ -268,5 +323,33 @@ struct AddDownloadView: View {
             manager.addDownload(link: link, destinationPath: dest, remoteName: selectedRemote, force: true)
         }
         dismiss()
+    }
+
+    private func createLocalFolder() {
+        let name = newLocalFolderName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        newLocalFolderError = nil
+
+        let base = useCustomDestination && !customDestination.isEmpty
+            ? customDestination
+            : manager.settings.defaultDestination
+
+        let newPath = (base as NSString).appendingPathComponent(name)
+
+        do {
+            try FileManager.default.createDirectory(
+                atPath: newPath,
+                withIntermediateDirectories: true,
+                attributes: nil
+            )
+            withAnimation {
+                customDestination = newPath
+                useCustomDestination = true
+                newLocalFolderName = ""
+                showNewLocalFolder = false
+            }
+        } catch {
+            newLocalFolderError = "Erro: \(error.localizedDescription)"
+        }
     }
 }
