@@ -15,6 +15,8 @@ struct SettingsView: View {
     @State private var driveChunkSize: String = "128M"
     @State private var historyRetentionDays: Int = 0
     @State private var preserveDriveStructure: Bool = true
+    @State private var ytDlpPath: String = ""
+    @State private var ffmpegPath: String = ""
     @State private var saved: Bool = false
     @State private var showAddAccount = false
     @State private var saveTask: Task<Void, Never>?
@@ -369,6 +371,79 @@ struct SettingsView: View {
                     }
                 }
 
+                // Social Media (yt-dlp)
+                settingsCard(title: "Social Media", icon: "play.rectangle.on.rectangle") {
+                    VStack(spacing: 12) {
+                        HStack(spacing: 8) {
+                            Text("yt-dlp")
+                                .font(AppTheme.font(size: 12, weight: .semibold))
+                                .foregroundColor(AppTheme.textSecondary)
+                                .frame(width: 60, alignment: .leading)
+                            TextField("/opt/homebrew/bin/yt-dlp", text: $ytDlpPath)
+                                .textFieldStyle(.roundedBorder)
+                                .font(AppTheme.font(size: 12, design: .monospaced))
+                            Button("Detectar") {
+                                if let p = YtDlpService.detectYtDlp() { ytDlpPath = p }
+                            }
+                            .font(AppTheme.font(size: 11))
+                            .buttonStyle(.plain)
+                            .foregroundColor(AppTheme.accent)
+                        }
+
+                        Divider().background(AppTheme.cardBorder)
+
+                        HStack(spacing: 8) {
+                            Text("ffmpeg")
+                                .font(AppTheme.font(size: 12, weight: .semibold))
+                                .foregroundColor(AppTheme.textSecondary)
+                                .frame(width: 60, alignment: .leading)
+                            TextField("/opt/homebrew/bin/ffmpeg", text: $ffmpegPath)
+                                .textFieldStyle(.roundedBorder)
+                                .font(AppTheme.font(size: 12, design: .monospaced))
+                            Button("Detectar") {
+                                if let p = YtDlpService.detectFfmpeg() { ffmpegPath = p }
+                            }
+                            .font(AppTheme.font(size: 11))
+                            .buttonStyle(.plain)
+                            .foregroundColor(AppTheme.accent)
+                        }
+
+                        Divider().background(AppTheme.cardBorder)
+
+                        HStack {
+                            if ytDlpPath.isEmpty {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(AppTheme.warning)
+                                    .font(.system(size: 12))
+                                Text("yt-dlp não encontrado")
+                                    .font(AppTheme.font(size: 12))
+                                    .foregroundColor(AppTheme.warning)
+                            } else {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(AppTheme.success)
+                                    .font(.system(size: 12))
+                                Text("yt-dlp configurado")
+                                    .font(AppTheme.font(size: 12))
+                                    .foregroundColor(AppTheme.success)
+                            }
+                            Spacer()
+                            Button {
+                                NSWorkspace.shared.open(
+                                    URL(string: "https://formulae.brew.sh/formula/yt-dlp")!
+                                )
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.down.circle")
+                                    Text("Instalar via Homebrew")
+                                }
+                                .font(AppTheme.font(size: 11))
+                            }
+                            .foregroundColor(AppTheme.accent)
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
                 // Auto-save indicator
                 if saved {
                     HStack {
@@ -398,6 +473,8 @@ struct SettingsView: View {
         .onChange(of: driveChunkSize) { _, _ in autoSave() }
         .onChange(of: historyRetentionDays) { _, _ in autoSave() }
         .onChange(of: preserveDriveStructure) { _, _ in autoSave() }
+        .onChange(of: ytDlpPath)  { _, _ in autoSave() }
+        .onChange(of: ffmpegPath) { _, _ in autoSave() }
     }
 
     private var rcloneStatusCard: some View {
@@ -473,6 +550,8 @@ struct SettingsView: View {
         driveChunkSize = s.driveChunkSize
         historyRetentionDays = s.historyRetentionDays
         preserveDriveStructure = s.preserveDriveStructure
+        ytDlpPath  = s.ytDlpPath
+        ffmpegPath = s.ffmpegPath
     }
 
     private func autoSave() {
@@ -496,7 +575,9 @@ struct SettingsView: View {
                 uploadTransfers: uploadTransfers,
                 driveChunkSize: driveChunkSize,
                 historyRetentionDays: historyRetentionDays,
-                preserveDriveStructure: preserveDriveStructure
+                preserveDriveStructure: preserveDriveStructure,
+                ytDlpPath: ytDlpPath,
+                ffmpegPath: ffmpegPath
             )
             manager.updateSettings(newSettings)
 

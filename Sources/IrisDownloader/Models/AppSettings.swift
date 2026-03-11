@@ -14,11 +14,13 @@ struct AppSettings: Codable {
     var maxRetries: Int
     var uploadTransfers: Int    // parallel file transfers during upload
     var driveChunkSize: String  // chunk size for Drive multipart uploads (e.g. "64M", "128M")
-    var historyRetentionDays: Int  // 0 = sem limite, >0 = apagar itens com mais de N dias
-    var preserveDriveStructure: Bool  // true = cria subpasta com nome da pasta do Drive no destino
-    var lastSeenVersion: String?  // última versão cujo What's New foi exibido
+    var historyRetentionDays: Int
+    var preserveDriveStructure: Bool
+    var lastSeenVersion: String?
+    var ytDlpPath: String    // path to yt-dlp binary
+    var ffmpegPath: String   // path to ffmpeg binary
 
-    static let appVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.5"
+    static let appVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.6"
 
     init(
         defaultDestination: String,
@@ -36,7 +38,9 @@ struct AppSettings: Codable {
         driveChunkSize: String = "128M",
         historyRetentionDays: Int = 0,
         preserveDriveStructure: Bool = true,
-        lastSeenVersion: String? = nil
+        lastSeenVersion: String? = nil,
+        ytDlpPath: String = "",
+        ffmpegPath: String = ""
     ) {
         self.defaultDestination = defaultDestination
         self.maxConcurrentDownloads = maxConcurrentDownloads
@@ -54,6 +58,8 @@ struct AppSettings: Codable {
         self.historyRetentionDays = historyRetentionDays
         self.preserveDriveStructure = preserveDriveStructure
         self.lastSeenVersion = lastSeenVersion
+        self.ytDlpPath = ytDlpPath
+        self.ffmpegPath = ffmpegPath
     }
 
     // Custom decoding for backward compatibility with v1.1 settings
@@ -65,6 +71,7 @@ struct AppSettings: Codable {
         case historyRetentionDays
         case preserveDriveStructure
         case lastSeenVersion
+        case ytDlpPath, ffmpegPath
     }
 
     init(from decoder: Decoder) throws {
@@ -85,6 +92,8 @@ struct AppSettings: Codable {
         historyRetentionDays = try c.decodeIfPresent(Int.self, forKey: .historyRetentionDays) ?? 0
         preserveDriveStructure = try c.decodeIfPresent(Bool.self, forKey: .preserveDriveStructure) ?? true
         lastSeenVersion = try c.decodeIfPresent(String.self, forKey: .lastSeenVersion)
+        ytDlpPath  = try c.decodeIfPresent(String.self, forKey: .ytDlpPath)  ?? YtDlpService.detectYtDlp()  ?? ""
+        ffmpegPath = try c.decodeIfPresent(String.self, forKey: .ffmpegPath) ?? YtDlpService.detectFfmpeg() ?? ""
     }
 
     static let `default` = AppSettings(
@@ -103,6 +112,8 @@ struct AppSettings: Codable {
         driveChunkSize: "128M",
         historyRetentionDays: 0,
         preserveDriveStructure: true,
-        lastSeenVersion: nil
+        lastSeenVersion: nil,
+        ytDlpPath:  YtDlpService.detectYtDlp()  ?? "",
+        ffmpegPath: YtDlpService.detectFfmpeg() ?? ""
     )
 }

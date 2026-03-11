@@ -4,7 +4,7 @@
 # Funciona em Apple Silicon (M1/M2/M3) E Intel - sem precisar de conta Apple
 set -e
 
-VERSION="1.5"
+VERSION="1.6"
 APP_NAME="Iris Downloader"
 DMG_NAME="IrisDownloader-${VERSION}-instalador.dmg"
 VOLUME_NAME="Iris Downloader ${VERSION}"

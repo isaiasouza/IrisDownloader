@@ -18,6 +18,22 @@ enum Changelog {
     /// O What's New sheet irá mostrar a entrada correspondente à versão atual.
     static let all: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "1.6",
+            date: "Mar 2026",
+            features: [
+                ChangelogFeature(
+                    icon: "play.rectangle.on.rectangle",
+                    title: "Download Social Media",
+                    description: "Baixe vídeos ou só o áudio do YouTube, Instagram, TikTok e +1000 plataformas direto do app."
+                ),
+                ChangelogFeature(
+                    icon: "video.fill",
+                    title: "Vídeo ou Só Áudio",
+                    description: "Escolha entre MP4 em várias qualidades (1080p, 720p…) ou extração de MP3 com um clique."
+                )
+            ]
+        ),
+        ChangelogEntry(
             version: "1.5",
             date: "Mar 2026",
             features: [

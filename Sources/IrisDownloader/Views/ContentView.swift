@@ -2,18 +2,20 @@ import SwiftUI
 
 enum SidebarItem: String, CaseIterable, Identifiable {
     case downloads = "Transferências"
-    case myDrive = "Meu Drive"
-    case history = "Histórico"
-    case settings = "Configurações"
+    case social    = "Social Media"
+    case myDrive   = "Meu Drive"
+    case history   = "Histórico"
+    case settings  = "Configurações"
 
     var id: String { rawValue }
 
     var systemImage: String {
         switch self {
         case .downloads: return "arrow.up.arrow.down.circle"
-        case .myDrive: return "externaldrive.fill"
-        case .history: return "clock"
-        case .settings: return "gearshape"
+        case .social:    return "play.rectangle.on.rectangle"
+        case .myDrive:   return "externaldrive.fill"
+        case .history:   return "clock"
+        case .settings:  return "gearshape"
         }
     }
 }
@@ -150,6 +152,8 @@ struct ContentView: View {
                 switch selection ?? .downloads {
                 case .downloads:
                     DownloadListView()
+                case .social:
+                    SocialMediaView()
                 case .myDrive:
                     MyDriveView()
                 case .history:
@@ -287,8 +291,12 @@ struct ContentView: View {
     private func badgeCount(for item: SidebarItem) -> Int {
         switch item {
         case .downloads: return manager.activeDownloads.count
-        case .myDrive: return 0
-        case .history: return manager.history.count
+        case .social:    return manager.socialDownloads.filter {
+            if case .downloading = $0.status { return true }
+            return false
+        }.count
+        case .myDrive:  return 0
+        case .history:  return manager.history.count
         case .settings: return 0
         }
     }

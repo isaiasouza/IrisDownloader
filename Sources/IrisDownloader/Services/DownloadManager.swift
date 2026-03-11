@@ -24,6 +24,9 @@ final class DownloadManager: ObservableObject {
     // File exists detection
     @Published var fileExistsItem: DownloadItem? = nil
 
+    // Social media downloads
+    @Published var socialDownloads: [SocialDownloadItem] = []
+
     // Computed for menu bar
     var totalProgress: Double {
         let active = activeDownloads.filter { $0.status == .downloading }
@@ -43,6 +46,7 @@ final class DownloadManager: ObservableObject {
     }
 
     private var processes: [UUID: Process] = [:]
+    private var socialProcesses: [UUID: Process] = [:]
     private var rcloneService: RcloneService
     private let persistence = PersistenceService.shared
     private let updateService = UpdateService()
@@ -689,5 +693,82 @@ final class DownloadManager: ObservableObject {
             trigger: nil
         )
         UNUserNotificationCenter.current().add(request)
+    }
+
+    // MARK: - Social Media Downloads
+
+    func addSocialDownload(
+        url: String,
+        title: String,
+        platform: SocialPlatform,
+        format: MediaFormat,
+        quality: MediaQuality,
+        destination: String
+    ) {
+        var item = SocialDownloadItem(url: url, format: format, quality: quality, destination: destination)
+        item.title    = title
+        item.platform = platform
+        item.status   = .downloading
+
+        socialDownloads.insert(item, at: 0)
+        startSocialDownload(item)
+    }
+
+    private func startSocialDownload(_ item: SocialDownloadItem) {
+        guard !settings.ytDlpPath.isEmpty else {
+            updateSocial(id: item.id) {
+                $0.status = .failed("yt-dlp não configurado. Vá em Configurações.")
+            }
+            return
+        }
+
+        let service = YtDlpService(ytDlpPath: settings.ytDlpPath, ffmpegPath: settings.ffmpegPath)
+
+        let process = service.startDownload(
+            item: item,
+            onProgress: { [weak self] progress, speed, eta in
+                self?.updateSocial(id: item.id) {
+                    $0.progress = progress
+                    $0.speed    = speed
+                    $0.eta      = eta
+                    $0.status   = .downloading
+                }
+            },
+            onComplete: { [weak self] success, outputPath in
+                self?.updateSocial(id: item.id) {
+                    $0.status         = success ? .completed : .failed("Falha no download")
+                    $0.progress       = success ? 1.0 : $0.progress
+                    $0.outputFilePath = outputPath
+                    $0.speed          = ""
+                    $0.eta            = ""
+                }
+                if success {
+                    self?.sendNotification(
+                        title: "Download concluído",
+                        body: "\(item.title) foi baixado com sucesso."
+                    )
+                }
+            }
+        )
+        socialProcesses[item.id] = process
+    }
+
+    func cancelSocialDownload(id: UUID) {
+        socialProcesses[id]?.terminate()
+        socialProcesses[id] = nil
+        updateSocial(id: id) { $0.status = .cancelled }
+    }
+
+    func retrySocialDownload(id: UUID) {
+        if let idx = socialDownloads.firstIndex(where: { $0.id == id }) {
+            socialDownloads[idx].status   = .downloading
+            socialDownloads[idx].progress = 0
+            startSocialDownload(socialDownloads[idx])
+        }
+    }
+
+    private func updateSocial(id: UUID, _ mutation: (inout SocialDownloadItem) -> Void) {
+        guard let idx = socialDownloads.firstIndex(where: { $0.id == id }) else { return }
+        mutation(&socialDownloads[idx])
     }
 }
