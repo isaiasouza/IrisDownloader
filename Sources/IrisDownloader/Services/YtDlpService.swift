@@ -112,16 +112,21 @@ final class YtDlpService {
 
         switch item.format {
         case .video:
-            // More permissive selector — works on Instagram/TikTok which don't always have mp4
+            // Robust selector: works for Instagram/TikTok (combined streams) AND YouTube (separate)
+            // vcodec!=none ensures we NEVER get audio-only — all fallbacks require a video track
             let fmt: String
             switch item.quality {
-            case .best:  fmt = "bestvideo+bestaudio/best"
-            case .q1080: fmt = "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best"
-            case .q720:  fmt = "bestvideo[height<=720]+bestaudio/best[height<=720]/best"
-            case .q480:  fmt = "bestvideo[height<=480]+bestaudio/best[height<=480]/best"
-            case .q360:  fmt = "bestvideo[height<=360]+bestaudio/best[height<=360]/best"
+            case .best:
+                fmt = "bestvideo[vcodec!=none]+bestaudio/best[vcodec!=none]/best[height>=1]"
+            case .q1080:
+                fmt = "bestvideo[height<=1080][vcodec!=none]+bestaudio/best[height<=1080][vcodec!=none]/best[vcodec!=none]"
+            case .q720:
+                fmt = "bestvideo[height<=720][vcodec!=none]+bestaudio/best[height<=720][vcodec!=none]/best[vcodec!=none]"
+            case .q480:
+                fmt = "bestvideo[height<=480][vcodec!=none]+bestaudio/best[height<=480][vcodec!=none]/best[vcodec!=none]"
+            case .q360:
+                fmt = "bestvideo[height<=360][vcodec!=none]+bestaudio/best[height<=360][vcodec!=none]/best[vcodec!=none]"
             }
-            // Recode to mp4 so the file always opens in macOS
             args += [
                 "-f", fmt,
                 "--merge-output-format", "mp4",
