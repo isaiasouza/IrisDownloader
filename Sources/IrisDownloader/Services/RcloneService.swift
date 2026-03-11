@@ -204,6 +204,75 @@ final class RcloneService {
         }
     }
 
+    /// List items shared with me (root level)
+    func listSharedWithMe() async throws -> [DriveItem] {
+        let result = try await runProcess(args: [
+            "lsjson",
+            "\(remoteName):",
+            "--drive-shared-with-me"
+        ])
+
+        guard result.status == 0,
+              let data = result.output.data(using: .utf8),
+              let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            return []
+        }
+
+        return items.compactMap { item -> DriveItem? in
+            guard let name = item["Name"] as? String,
+                  let path = item["Path"] as? String else { return nil }
+
+            let isDir = (item["IsDir"] as? Bool) ?? false
+            var size: Int64 = 0
+            if let s = item["Size"] as? Int64 {
+                size = s
+            } else if let s = item["Size"] as? Int {
+                size = Int64(s)
+            } else if let s = item["Size"] as? Double {
+                size = Int64(s)
+            }
+
+            let id = (item["ID"] as? String) ?? path
+
+            return DriveItem(id: id, name: name, path: path, size: size, isFolder: isDir)
+        }
+    }
+
+    /// List contents of a shared folder
+    func listSharedContents(driveID: String) async throws -> [DriveItem] {
+        let result = try await runProcess(args: [
+            "lsjson",
+            "\(remoteName):",
+            "--drive-root-folder-id", driveID,
+            "--drive-shared-with-me"
+        ])
+
+        guard result.status == 0,
+              let data = result.output.data(using: .utf8),
+              let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            return []
+        }
+
+        return items.compactMap { item -> DriveItem? in
+            guard let name = item["Name"] as? String,
+                  let path = item["Path"] as? String else { return nil }
+
+            let isDir = (item["IsDir"] as? Bool) ?? false
+            var size: Int64 = 0
+            if let s = item["Size"] as? Int64 {
+                size = s
+            } else if let s = item["Size"] as? Int {
+                size = Int64(s)
+            } else if let s = item["Size"] as? Double {
+                size = Int64(s)
+            }
+
+            let id = (item["ID"] as? String) ?? path
+
+            return DriveItem(id: id, name: name, path: path, size: size, isFolder: isDir)
+        }
+    }
+
     /// Create a new folder inside a Drive folder and return its ID.
     func createFolder(name: String, parentID: String) async throws -> String {
         let mkResult = try await runProcess(args: [

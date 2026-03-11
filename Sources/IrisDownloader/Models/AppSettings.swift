@@ -19,6 +19,12 @@ struct AppSettings: Codable {
     var lastSeenVersion: String?
     var ytDlpPath: String    // path to yt-dlp binary
     var ffmpegPath: String   // path to ffmpeg binary
+    
+    // Smart Mode
+    var smartModeEnabled: Bool
+    var smartFormat: MediaFormat
+    var smartQuality: MediaQuality
+    var smartDestination: String
 
     static let appVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.6"
 
@@ -40,7 +46,11 @@ struct AppSettings: Codable {
         preserveDriveStructure: Bool = true,
         lastSeenVersion: String? = nil,
         ytDlpPath: String = "",
-        ffmpegPath: String = ""
+        ffmpegPath: String = "",
+        smartModeEnabled: Bool = false,
+        smartFormat: MediaFormat = .video,
+        smartQuality: MediaQuality = .best,
+        smartDestination: String = ""
     ) {
         self.defaultDestination = defaultDestination
         self.maxConcurrentDownloads = maxConcurrentDownloads
@@ -60,6 +70,10 @@ struct AppSettings: Codable {
         self.lastSeenVersion = lastSeenVersion
         self.ytDlpPath = ytDlpPath
         self.ffmpegPath = ffmpegPath
+        self.smartModeEnabled = smartModeEnabled
+        self.smartFormat = smartFormat
+        self.smartQuality = smartQuality
+        self.smartDestination = smartDestination
     }
 
     // Custom decoding for backward compatibility with v1.1 settings
@@ -72,6 +86,7 @@ struct AppSettings: Codable {
         case preserveDriveStructure
         case lastSeenVersion
         case ytDlpPath, ffmpegPath
+        case smartModeEnabled, smartFormat, smartQuality, smartDestination
     }
 
     init(from decoder: Decoder) throws {
@@ -94,6 +109,10 @@ struct AppSettings: Codable {
         lastSeenVersion = try c.decodeIfPresent(String.self, forKey: .lastSeenVersion)
         ytDlpPath  = try c.decodeIfPresent(String.self, forKey: .ytDlpPath)  ?? YtDlpService.detectYtDlp()  ?? ""
         ffmpegPath = try c.decodeIfPresent(String.self, forKey: .ffmpegPath) ?? YtDlpService.detectFfmpeg() ?? ""
+        smartModeEnabled = try c.decodeIfPresent(Bool.self, forKey: .smartModeEnabled) ?? false
+        smartFormat = try c.decodeIfPresent(MediaFormat.self, forKey: .smartFormat) ?? .video
+        smartQuality = try c.decodeIfPresent(MediaQuality.self, forKey: .smartQuality) ?? .best
+        smartDestination = try c.decodeIfPresent(String.self, forKey: .smartDestination) ?? ""
     }
 
     static let `default` = AppSettings(
@@ -114,6 +133,10 @@ struct AppSettings: Codable {
         preserveDriveStructure: true,
         lastSeenVersion: nil,
         ytDlpPath:  YtDlpService.detectYtDlp()  ?? "",
-        ffmpegPath: YtDlpService.detectFfmpeg() ?? ""
+        ffmpegPath: YtDlpService.detectFfmpeg() ?? "",
+        smartModeEnabled: false,
+        smartFormat: .video,
+        smartQuality: .best,
+        smartDestination: ""
     )
 }

@@ -5,6 +5,9 @@ struct IrisDownloaderApp: App {
     @StateObject private var downloadManager = DownloadManager()
     @State private var showOnboarding = false
 
+    @FocusedBinding(\.showDownloadSheet) private var showDownloadSheet
+    @FocusedBinding(\.showUploadSheet) private var showUploadSheet
+
     init() {
         AppTheme.registerFonts()
     }
@@ -33,6 +36,19 @@ struct IrisDownloaderApp: App {
         }
         .windowStyle(.titleBar)
         .defaultSize(width: 900, height: 600)
+        .commands {
+            CommandMenu("Transferências") {
+                Button("Novo Download") {
+                    showDownloadSheet = true
+                }
+                .keyboardShortcut("n", modifiers: .command)
+
+                Button("Novo Upload") {
+                    showUploadSheet = true
+                }
+                .keyboardShortcut("u", modifiers: .command)
+            }
+        }
 
         // Menu bar icon
         MenuBarExtra {

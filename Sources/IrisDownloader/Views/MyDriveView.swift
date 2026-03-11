@@ -1,5 +1,10 @@
 import SwiftUI
 
+enum DriveMode: String, CaseIterable {
+    case myDrive = "Meu Drive"
+    case sharedWithMe = "Compartilhados"
+}
+
 struct MyDriveView: View {
     @EnvironmentObject var manager: DownloadManager
 
@@ -9,13 +14,20 @@ struct MyDriveView: View {
     @State private var selectedRemote: String = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var driveMode: DriveMode = .myDrive
+    @State private var searchText: String = ""
 
     private var currentFolderID: String? {
         breadcrumb.last?.id
     }
 
+    private var filteredItems: [DriveItem] {
+        guard !searchText.trimmingCharacters(in: .whitespaces).isEmpty else { return items }
+        return items.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
+
     private var selectedItems: [DriveItem] {
-        items.filter { selectedIDs.contains($0.id) }
+        filteredItems.filter { selectedIDs.contains($0.id) }
     }
 
     private var selectedSize: Int64 {
@@ -29,12 +41,42 @@ struct MyDriveView: View {
 
             Divider().background(AppTheme.cardBorder)
 
+            // Search bar
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(AppTheme.font(size: 13))
+                    .foregroundColor(searchText.isEmpty ? AppTheme.textMuted : AppTheme.accent)
+                TextField("Pesquisar por nome...", text: $searchText)
+                    .font(AppTheme.font(size: 13))
+                    .textFieldStyle(.plain)
+                    .foregroundColor(AppTheme.textPrimary)
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(AppTheme.font(size: 13))
+                            .foregroundColor(AppTheme.textMuted)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(AppTheme.bgTertiary)
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(AppTheme.cardBorder))
+            )
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+
             // Breadcrumb
             breadcrumbBar
                 .padding(.vertical, 8)
 
             // Selection bar
-            if !isLoading && errorMessage == nil && !items.isEmpty {
+            if !isLoading && errorMessage == nil && !filteredItems.isEmpty {
                 selectionBar
             }
 
@@ -81,10 +123,21 @@ struct MyDriveView: View {
                         .foregroundColor(AppTheme.textMuted)
                 }
                 Spacer()
+            } else if filteredItems.isEmpty {
+                Spacer()
+                VStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(AppTheme.font(size: 32))
+                        .foregroundColor(AppTheme.textMuted)
+                    Text("Nenhum resultado para \"\(searchText)\"")
+                        .font(AppTheme.font(size: 14, weight: .medium))
+                        .foregroundColor(AppTheme.textMuted)
+                }
+                Spacer()
             } else {
                 ScrollView {
                     LazyVStack(spacing: 2) {
-                        ForEach(items) { item in
+                        ForEach(filteredItems) { item in
                             itemRow(item)
                         }
                     }
@@ -115,38 +168,57 @@ struct MyDriveView: View {
     // MARK: - Toolbar
 
     private var toolbarBar: some View {
-        HStack(spacing: 12) {
-            if manager.availableRemotes.count > 1 {
-                Picker("Conta", selection: $selectedRemote) {
-                    ForEach(manager.availableRemotes, id: \.self) { remote in
-                        Text(remote).tag(remote)
+        VStack(spacing: 8) {
+            HStack(spacing: 12) {
+                if manager.availableRemotes.count > 1 {
+                    Picker("Conta", selection: $selectedRemote) {
+                        ForEach(manager.availableRemotes, id: \.self) { remote in
+                            Text(remote).tag(remote)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: 200)
+                    .font(AppTheme.font(size: 12))
+                } else {
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.circle.fill")
+                            .foregroundColor(AppTheme.accent)
+                        Text(selectedRemote)
+                            .font(AppTheme.font(size: 13, weight: .medium))
+                            .foregroundColor(AppTheme.textPrimary)
                     }
                 }
-                .pickerStyle(.menu)
-                .frame(maxWidth: 200)
-                .font(AppTheme.font(size: 12))
-            } else {
-                HStack(spacing: 6) {
-                    Image(systemName: "person.circle.fill")
-                        .foregroundColor(AppTheme.accent)
-                    Text(selectedRemote)
-                        .font(AppTheme.font(size: 13, weight: .medium))
-                        .foregroundColor(AppTheme.textPrimary)
+
+                Spacer()
+
+                Button {
+                    Task { await loadContents() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(AppTheme.font(size: 13))
+                        .foregroundColor(AppTheme.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .help("Atualizar")
+                .disabled(isLoading)
+            }
+
+            // Drive mode picker
+            Picker("Modo", selection: $driveMode) {
+                ForEach(DriveMode.allCases, id: \.self) { mode in
+                    HStack(spacing: 4) {
+                        Image(systemName: mode == .myDrive ? "externaldrive.fill" : "person.2.fill")
+                        Text(mode.rawValue)
+                    }
+                    .tag(mode)
                 }
             }
-
-            Spacer()
-
-            Button {
+            .pickerStyle(.segmented)
+            .onChange(of: driveMode) { _, _ in
+                breadcrumb.removeAll()
+                selectedIDs.removeAll()
                 Task { await loadContents() }
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(AppTheme.font(size: 13))
-                    .foregroundColor(AppTheme.textSecondary)
             }
-            .buttonStyle(.plain)
-            .help("Atualizar")
-            .disabled(isLoading)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -157,7 +229,7 @@ struct MyDriveView: View {
     private var breadcrumbBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
-                breadcrumbButton(name: "Meu Drive", id: nil)
+                breadcrumbButton(name: driveMode == .myDrive ? "Meu Drive" : "Compartilhados", id: nil)
 
                 ForEach(Array(breadcrumb.enumerated()), id: \.element.id) { _, crumb in
                     Image(systemName: "chevron.right")
@@ -191,7 +263,7 @@ struct MyDriveView: View {
     private var selectionBar: some View {
         HStack(spacing: 12) {
             Button("Selecionar Todos") {
-                selectedIDs = Set(items.map { $0.id })
+                selectedIDs = Set(filteredItems.map { $0.id })
             }
             .font(AppTheme.font(size: 11, weight: .medium))
             .buttonStyle(.plain)
@@ -206,7 +278,7 @@ struct MyDriveView: View {
 
             Spacer()
 
-            Text("\(items.count) itens")
+            Text("\(filteredItems.count) itens")
                 .font(AppTheme.font(size: 11))
                 .foregroundColor(AppTheme.textMuted)
 
@@ -349,10 +421,19 @@ struct MyDriveView: View {
 
         do {
             let result: [DriveItem]
-            if let folderID = currentFolderID {
-                result = try await service.listContents(driveID: folderID)
-            } else {
-                result = try await service.listRootContents()
+            switch driveMode {
+            case .myDrive:
+                if let folderID = currentFolderID {
+                    result = try await service.listContents(driveID: folderID)
+                } else {
+                    result = try await service.listRootContents()
+                }
+            case .sharedWithMe:
+                if let folderID = currentFolderID {
+                    result = try await service.listSharedContents(driveID: folderID)
+                } else {
+                    result = try await service.listSharedWithMe()
+                }
             }
             items = result.sorted { a, b in
                 if a.isFolder != b.isFolder { return a.isFolder }

@@ -31,7 +31,7 @@ enum SocialPlatform: String, Codable {
 
 // MARK: - Format
 
-enum MediaFormat: String, CaseIterable, Identifiable {
+enum MediaFormat: String, CaseIterable, Identifiable, Codable {
     case video     = "Vídeo (MP4)"
     case audioOnly = "Só Áudio (MP3)"
 
@@ -41,7 +41,7 @@ enum MediaFormat: String, CaseIterable, Identifiable {
 
 // MARK: - Quality
 
-enum MediaQuality: String, CaseIterable, Identifiable {
+enum MediaQuality: String, CaseIterable, Identifiable, Codable {
     case best   = "Melhor qualidade"
     case q1080  = "1080p"
     case q720   = "720p"

@@ -4,7 +4,7 @@ struct AddSocialDownloadView: View {
     @EnvironmentObject var manager: DownloadManager
     @Environment(\.dismiss) private var dismiss
 
-    @State private var urlText: String = ""
+    @State private var urlText: String
     @State private var selectedFormat: MediaFormat = .video
     @State private var selectedQuality: MediaQuality = .best
     @State private var useCustomDestination = false
@@ -13,6 +13,10 @@ struct AddSocialDownloadView: View {
     @State private var fetchedTitle: String? = nil
     @State private var fetchedThumbnail: String? = nil
     @State private var fetchError: String? = nil
+
+    init(initialURL: String = "") {
+        _urlText = State(initialValue: initialURL)
+    }
 
     private var platform: SocialPlatform { SocialPlatform.detect(from: urlText) }
     private var isValidURL: Bool { URL(string: urlText) != nil && urlText.contains("://") }

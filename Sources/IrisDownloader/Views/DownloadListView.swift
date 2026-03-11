@@ -2,6 +2,8 @@ import SwiftUI
 
 struct DownloadListView: View {
     @EnvironmentObject var manager: DownloadManager
+    @Binding var showDownloadSheet: Bool
+    @Binding var showUploadSheet: Bool
 
     var body: some View {
         Group {
@@ -108,17 +110,34 @@ struct DownloadListView: View {
                 .foregroundColor(AppTheme.textPrimary)
 
             VStack(spacing: 4) {
-                Text("Use os botões na toolbar para:")
+                Text("Clique para começar:")
                     .font(AppTheme.font(size: 13))
                     .foregroundColor(AppTheme.textMuted)
 
-                HStack(spacing: 16) {
-                    Label("Download", systemImage: "arrow.down.circle")
-                        .font(AppTheme.font(size: 12))
-                        .foregroundColor(AppTheme.accent)
-                    Label("Upload", systemImage: "arrow.up.circle")
-                        .font(AppTheme.font(size: 12))
-                        .foregroundColor(AppTheme.success)
+                HStack(spacing: 12) {
+                    Button {
+                        showDownloadSheet = true
+                    } label: {
+                        Label("Download", systemImage: "arrow.down.circle")
+                            .font(AppTheme.font(size: 12, weight: .semibold))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .background(Capsule().fill(AppTheme.accent.opacity(0.15)))
+                            .foregroundColor(AppTheme.accent)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        showUploadSheet = true
+                    } label: {
+                        Label("Upload", systemImage: "arrow.up.circle")
+                            .font(AppTheme.font(size: 12, weight: .semibold))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .background(Capsule().fill(AppTheme.success.opacity(0.15)))
+                            .foregroundColor(AppTheme.success)
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.top, 4)
             }

@@ -68,6 +68,8 @@ struct ContentView: View {
                 Text("\"\(item.driveName)\" já existe em \"\((item.destinationPath as NSString).lastPathComponent)\". Deseja substituir?")
             }
         }
+        .focusedSceneValue(\.showDownloadSheet, $showAddDownloadSheet)
+        .focusedSceneValue(\.showUploadSheet, $showAddUploadSheet)
         .preferredColorScheme(.dark)
         .onDrop(of: [.text, .url], isTargeted: $isDragOver) { providers in
             handleDrop(providers)
@@ -151,7 +153,10 @@ struct ContentView: View {
             Group {
                 switch selection ?? .downloads {
                 case .downloads:
-                    DownloadListView()
+                    DownloadListView(
+                        showDownloadSheet: $showAddDownloadSheet,
+                        showUploadSheet: $showAddUploadSheet
+                    )
                 case .social:
                     SocialMediaView()
                 case .myDrive:
