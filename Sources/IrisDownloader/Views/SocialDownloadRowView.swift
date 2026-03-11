@@ -92,9 +92,27 @@ struct SocialDownloadRowView: View {
 
             // Actions
             HStack(spacing: 8) {
-                if case .completed = item.status, let path = item.outputFilePath {
+                if case .completed = item.status {
+                    // Open file directly
+                    if let path = item.outputFilePath {
+                        Button {
+                            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+                        } label: {
+                            Image(systemName: "play.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(AppTheme.accent.opacity(0.8))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Abrir arquivo")
+                    }
+
+                    // Show in Finder — uses file path if available, else opens destination folder
                     Button {
-                        NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
+                        if let path = item.outputFilePath, FileManager.default.fileExists(atPath: path) {
+                            NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
+                        } else {
+                            NSWorkspace.shared.open(URL(fileURLWithPath: item.destinationPath))
+                        }
                     } label: {
                         Image(systemName: "folder.fill")
                             .font(.system(size: 13))

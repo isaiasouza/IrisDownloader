@@ -93,11 +93,17 @@ final class YtDlpService {
         let outputTemplate = (item.destinationPath as NSString)
             .appendingPathComponent("%(title)s.%(ext)s")
 
+        // Prefix printed to stdout so we can extract the real output path
+        let filePathPrefix = "__IRIS_FILEPATH__:"
+
         var args: [String] = [
             ytDlpPath,
             "--no-playlist",
             "--newline",
-            "--progress-template", "%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s",
+            // Print real output path after download/conversion finishes
+            "--print", "after_move:\(filePathPrefix)%(filepath)s",
+            // Separate progress lines from file path line
+            "--progress-template", "PROG:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s",
         ]
 
         if !ffmpegPath.isEmpty {
@@ -106,13 +112,27 @@ final class YtDlpService {
 
         switch item.format {
         case .video:
-            args += ["-f", item.quality.ytDlpFormat, "-o", outputTemplate]
+            // More permissive selector — works on Instagram/TikTok which don't always have mp4
+            let fmt: String
+            switch item.quality {
+            case .best:  fmt = "bestvideo+bestaudio/best"
+            case .q1080: fmt = "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best"
+            case .q720:  fmt = "bestvideo[height<=720]+bestaudio/best[height<=720]/best"
+            case .q480:  fmt = "bestvideo[height<=480]+bestaudio/best[height<=480]/best"
+            case .q360:  fmt = "bestvideo[height<=360]+bestaudio/best[height<=360]/best"
+            }
+            // Recode to mp4 so the file always opens in macOS
+            args += [
+                "-f", fmt,
+                "--merge-output-format", "mp4",
+                "-o", outputTemplate
+            ]
         case .audioOnly:
             args += [
                 "-f", "bestaudio",
                 "-x", "--audio-format", "mp3",
                 "--audio-quality", "0",
-                "-o", (item.destinationPath as NSString).appendingPathComponent("%(title)s.%(ext)s")
+                "-o", outputTemplate
             ]
         }
 
@@ -126,29 +146,41 @@ final class YtDlpService {
         env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + (env["PATH"] ?? "")
         process.environment = env
 
-        let pipe = Pipe()
+        let outPipe = Pipe()
         let errPipe = Pipe()
-        process.standardOutput = pipe
+        process.standardOutput = outPipe
         process.standardError  = errPipe
 
-        var lastOutputLine = ""
+        var capturedFilePath: String? = nil
 
-        pipe.fileHandleForReading.readabilityHandler = { handle in
-            guard let line = String(data: handle.availableData, encoding: .utf8), !line.isEmpty else { return }
-            for rawLine in line.components(separatedBy: .newlines) {
+        outPipe.fileHandleForReading.readabilityHandler = { handle in
+            guard let chunk = String(data: handle.availableData, encoding: .utf8), !chunk.isEmpty else { return }
+
+            for rawLine in chunk.components(separatedBy: .newlines) {
                 let l = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !l.isEmpty else { continue }
-                lastOutputLine = l
 
-                // Parse progress line: "50.5%|1.23MiB/s|00:12"
-                let parts = l.components(separatedBy: "|")
-                if parts.count >= 1 {
-                    let pctStr = parts[0].trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "%", with: "")
+                // Capture real file path
+                if l.hasPrefix(filePathPrefix) {
+                    let path = String(l.dropFirst(filePathPrefix.count))
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !path.isEmpty {
+                        capturedFilePath = path
+                    }
+                    continue
+                }
+
+                // Parse progress line: "PROG:50.5%|1.23MiB/s|00:12"
+                if l.hasPrefix("PROG:") {
+                    let inner = String(l.dropFirst(5))
+                    let parts = inner.components(separatedBy: "|")
+                    let pctStr = parts[0].replacingOccurrences(of: "%", with: "")
+                        .trimmingCharacters(in: .whitespaces)
                     if let pct = Double(pctStr) {
                         let speed = parts.count > 1 ? parts[1].trimmingCharacters(in: .whitespaces) : ""
                         let eta   = parts.count > 2 ? parts[2].trimmingCharacters(in: .whitespaces) : ""
                         DispatchQueue.main.async {
-                            onProgress(pct / 100.0, speed, eta)
+                            onProgress(min(pct / 100.0, 0.99), speed, eta)
                         }
                     }
                 }
@@ -156,10 +188,26 @@ final class YtDlpService {
         }
 
         process.terminationHandler = { proc in
-            pipe.fileHandleForReading.readabilityHandler = nil
+            outPipe.fileHandleForReading.readabilityHandler = nil
+
+            // Flush remaining stdout
+            let remaining = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            var finalPath = capturedFilePath
+
+            // Fallback: scan remaining output for the filepath prefix
+            if finalPath == nil {
+                for l in remaining.components(separatedBy: .newlines) {
+                    let t = l.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if t.hasPrefix(filePathPrefix) {
+                        finalPath = String(t.dropFirst(filePathPrefix.count))
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                }
+            }
+
             let success = proc.terminationStatus == 0
             DispatchQueue.main.async {
-                onComplete(success, success ? lastOutputLine : nil)
+                onComplete(success, success ? finalPath : nil)
             }
         }
 
