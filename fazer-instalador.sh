@@ -4,7 +4,7 @@
 # Funciona em Apple Silicon (M1/M2/M3) E Intel - sem precisar de conta Apple
 set -e
 
-VERSION="1.6"
+VERSION="1.7"
 APP_NAME="Iris Downloader"
 DMG_NAME="IrisDownloader-${VERSION}-instalador.dmg"
 VOLUME_NAME="Iris Downloader ${VERSION}"
@@ -72,7 +72,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST
     <key>CFBundleShortVersionString</key>
     <string>${VERSION}</string>
     <key>CFBundleVersion</key>
-    <string>4</string>
+    <string>5</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>NSHighResolutionCapable</key>

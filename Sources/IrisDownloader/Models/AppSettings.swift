@@ -26,7 +26,7 @@ struct AppSettings: Codable {
     var smartQuality: MediaQuality
     var smartDestination: String
 
-    static let appVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.6"
+    static let appVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.7"
 
     init(
         defaultDestination: String,

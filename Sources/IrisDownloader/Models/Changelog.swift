@@ -18,6 +18,17 @@ enum Changelog {
     /// O What's New sheet irá mostrar a entrada correspondente à versão atual.
     static let all: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "1.7",
+            date: "Mar 2026",
+            features: [
+                ChangelogFeature(
+                    icon: "folder.badge.checkmark",
+                    title: "Nome de Pasta Preservado",
+                    description: "Ao baixar uma pasta do Drive, o app agora usa a API do Google Drive para buscar o nome real — independente de onde a pasta esteja no Drive."
+                )
+            ]
+        ),
+        ChangelogEntry(
             version: "1.6",
             date: "Mar 2026",
             features: [
