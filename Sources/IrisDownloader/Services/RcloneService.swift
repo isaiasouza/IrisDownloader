@@ -97,28 +97,96 @@ final class RcloneService {
         return parsed
     }
 
-    /// Get the name of a drive item by searching for its ID in known listing locations
+    /// Get the name of a drive item — tries Drive API first (most reliable), then listing searches
     func getName(driveID: String) async throws -> String {
-        // 1. Search in "Shared with me" — most common for shared folder/file links
+        // 1. Drive API via rclone token (works for any file/folder regardless of location)
+        if let name = await getNameViaDriveAPI(driveID: driveID) {
+            return name
+        }
+
+        // 2. Search in "Shared with me" root listing
         if let name = await findNameByID(driveID: driveID, args: [
             "lsjson", "\(remoteName):", "--drive-shared-with-me"
         ]) {
             return name
         }
 
-        // 2. Search in My Drive root (works for top-level folders)
+        // 3. Search in My Drive root listing
         if let name = await findNameByID(driveID: driveID, args: [
             "lsjson", "\(remoteName):"
         ]) {
             return name
         }
 
-        // 3. Fallback to backend get
-        if let name = try? await getFolderNameViaBackend(driveID: driveID) {
-            return name
+        return "Pasta do Google Drive"
+    }
+
+    /// Call the Google Drive API directly using the OAuth token stored in the rclone config.
+    /// This is the most reliable approach — works for any file/folder regardless of nesting.
+    private func getNameViaDriveAPI(driveID: String) async -> String? {
+        // Get config file path from rclone
+        guard let result = try? await runProcess(args: ["config", "file"]),
+              result.status == 0 else { return nil }
+
+        // rclone config file outputs: "Configuration file is stored at:\n/path/to/rclone.conf"
+        let configPath = result.output
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { $0.hasPrefix("/") }
+
+        guard let configPath,
+              let configContent = try? String(contentsOfFile: configPath, encoding: .utf8) else {
+            return nil
         }
 
-        return "Pasta do Google Drive" // Generic fallback if all fails
+        // Parse token JSON for our remote from the INI-style config
+        guard let accessToken = extractAccessToken(from: configContent, remoteName: remoteName) else {
+            return nil
+        }
+
+        // Call Drive API files.get — supportsAllDrives covers shared drives too
+        let urlString = "https://www.googleapis.com/drive/v3/files/\(driveID)?fields=name&supportsAllDrives=true&includeItemsFromAllDrives=true"
+        guard let url = URL(string: urlString) else { return nil }
+
+        var request = URLRequest(url: url, timeoutInterval: 10)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let name = json["name"] as? String, !name.isEmpty else {
+            return nil
+        }
+
+        return name
+    }
+
+    /// Parse an INI-style rclone config and return the access_token for the given remote
+    private func extractAccessToken(from config: String, remoteName: String) -> String? {
+        var inSection = false
+        for line in config.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed == "[\(remoteName)]" {
+                inSection = true
+                continue
+            }
+            if inSection && trimmed.hasPrefix("[") {
+                break // entered a new section
+            }
+            if inSection && trimmed.hasPrefix("token") {
+                // token = {"access_token":"...","token_type":"Bearer",...}
+                let tokenJSON = trimmed
+                    .drop(while: { $0 != "=" })
+                    .dropFirst()
+                    .trimmingCharacters(in: .whitespaces)
+                if let data = tokenJSON.data(using: .utf8),
+                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let token = obj["access_token"] as? String {
+                    return token
+                }
+            }
+        }
+        return nil
     }
 
     /// Search a lsjson listing for an item matching driveID and return its Name
@@ -134,36 +202,6 @@ final class RcloneService {
                let name = item["Name"] as? String, !name.isEmpty {
                 return name
             }
-        }
-        return nil
-    }
-
-    private func getFolderNameViaBackend(driveID: String) async throws -> String? {
-        // Try normal first
-        let argsNormal = [
-            "backend", "get",
-            "\(remoteName):",
-            "-o", "id=\(driveID)",
-            "-o", "fields=name"
-        ]
-        
-        if let name = try await runBackendGetName(args: argsNormal) {
-            return name
-        }
-        
-        // Try with shared-with-me
-        let argsShared = argsNormal + ["--drive-shared-with-me"]
-        return try await runBackendGetName(args: argsShared)
-    }
-
-    private func runBackendGetName(args: [String]) async throws -> String? {
-        let result = try await runProcess(args: args)
-        guard result.status == 0 else { return nil }
-
-        if let jsonData = result.output.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-           let name = json["name"] as? String {
-            return name
         }
         return nil
     }
