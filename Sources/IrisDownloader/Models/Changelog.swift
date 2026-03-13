@@ -18,6 +18,22 @@ enum Changelog {
     /// O What's New sheet irá mostrar a entrada correspondente à versão atual.
     static let all: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "1.8",
+            date: "Mar 2026",
+            features: [
+                ChangelogFeature(
+                    icon: "building.2.fill",
+                    title: "Drives Compartilhados",
+                    description: "Acesse seus Google Workspace Shared Drives diretamente pelo app — navegue, selecione e baixe arquivos de qualquer Drive da sua organização."
+                ),
+                ChangelogFeature(
+                    icon: "person.2.fill",
+                    title: "Navegação em Compartilhados Corrigida",
+                    description: "Corrigido bug que impedia navegar para dentro de subpastas de itens compartilhados comigo."
+                )
+            ]
+        ),
+        ChangelogEntry(
             version: "1.7",
             date: "Mar 2026",
             features: [

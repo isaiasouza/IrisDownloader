@@ -1,5 +1,10 @@
 import Foundation
 
+struct SharedDrive: Identifiable {
+    let id: String
+    let name: String
+}
+
 struct DriveItem: Identifiable {
     let id: String
     let name: String

@@ -342,6 +342,26 @@ final class RcloneService {
         }
     }
 
+    /// List Shared Drives (Google Workspace Team Drives) the user is a member of
+    func listSharedDrives() async throws -> [SharedDrive] {
+        let result = try await runProcess(args: [
+            "backend", "drives", "\(remoteName):"
+        ])
+
+        guard result.status == 0,
+              let data = result.output.data(using: .utf8),
+              let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            return []
+        }
+
+        return items.compactMap { item -> SharedDrive? in
+            guard let id = item["id"] as? String,
+                  let name = item["name"] as? String else { return nil }
+            return SharedDrive(id: id, name: name)
+        }
+        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
     /// Create a new folder inside a Drive folder and return its ID.
     func createFolder(name: String, parentID: String) async throws -> String {
         let mkResult = try await runProcess(args: [

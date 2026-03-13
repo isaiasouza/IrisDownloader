@@ -1,8 +1,9 @@
 import SwiftUI
 
 enum DriveMode: String, CaseIterable {
-    case myDrive = "Meu Drive"
+    case myDrive      = "Meu Drive"
     case sharedWithMe = "Compartilhados"
+    case sharedDrives = "Drives"
 }
 
 struct MyDriveView: View {
@@ -206,8 +207,15 @@ struct MyDriveView: View {
             // Drive mode picker
             Picker("Modo", selection: $driveMode) {
                 ForEach(DriveMode.allCases, id: \.self) { mode in
+                    let icon: String = {
+                        switch mode {
+                        case .myDrive:      return "externaldrive.fill"
+                        case .sharedWithMe: return "person.2.fill"
+                        case .sharedDrives: return "building.2.fill"
+                        }
+                    }()
                     HStack(spacing: 4) {
-                        Image(systemName: mode == .myDrive ? "externaldrive.fill" : "person.2.fill")
+                        Image(systemName: icon)
                         Text(mode.rawValue)
                     }
                     .tag(mode)
@@ -229,7 +237,13 @@ struct MyDriveView: View {
     private var breadcrumbBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
-                breadcrumbButton(name: driveMode == .myDrive ? "Meu Drive" : "Compartilhados", id: nil)
+                breadcrumbButton(name: {
+                    switch driveMode {
+                    case .myDrive:      return "Meu Drive"
+                    case .sharedWithMe: return "Compartilhados"
+                    case .sharedDrives: return "Drives"
+                    }
+                }(), id: nil)
 
                 ForEach(Array(breadcrumb.enumerated()), id: \.element.id) { _, crumb in
                     Image(systemName: "chevron.right")
@@ -430,9 +444,22 @@ struct MyDriveView: View {
                 }
             case .sharedWithMe:
                 if let folderID = currentFolderID {
-                    result = try await service.listSharedContents(driveID: folderID)
+                    // Bug fix: subpastas de itens compartilhados não usam --drive-shared-with-me
+                    result = try await service.listContents(driveID: folderID)
                 } else {
                     result = try await service.listSharedWithMe()
+                }
+            case .sharedDrives:
+                if let folderID = currentFolderID {
+                    result = try await service.listContents(driveID: folderID)
+                } else {
+                    // Nível raiz: mostra a lista de Drives Compartilhados como pastas
+                    let drives = try await service.listSharedDrives()
+                    items = drives.map { drive in
+                        DriveItem(id: drive.id, name: drive.name, path: drive.id, size: 0, isFolder: true)
+                    }
+                    isLoading = false
+                    return
                 }
             }
             items = result.sorted { a, b in
