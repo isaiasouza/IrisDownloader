@@ -97,35 +97,67 @@ final class RcloneService {
         return parsed
     }
 
-    /// Get the name of a drive item
+    /// Get the name of a drive item by searching for its ID in known listing locations
     func getName(driveID: String) async throws -> String {
-        let result = try await runProcess(args: [
-            "lsjson",
-            "\(remoteName):",
-            "--drive-root-folder-id", driveID
-        ])
-
-        if result.status == 0,
-           let jsonData = result.output.data(using: .utf8),
-           let items = try? JSONSerialization.jsonObject(with: jsonData) as? [[String: Any]],
-           !items.isEmpty {
-            if let name = try? await getFolderNameViaBackend(driveID: driveID) {
-                return name
-            }
-            return "Pasta Drive (\(items.count) itens)"
+        // 1. Search in "Shared with me" — most common for shared folder/file links
+        if let name = await findNameByID(driveID: driveID, args: [
+            "lsjson", "\(remoteName):", "--drive-shared-with-me"
+        ]) {
+            return name
         }
 
-        return driveID
+        // 2. Search in My Drive root (works for top-level folders)
+        if let name = await findNameByID(driveID: driveID, args: [
+            "lsjson", "\(remoteName):"
+        ]) {
+            return name
+        }
+
+        // 3. Fallback to backend get
+        if let name = try? await getFolderNameViaBackend(driveID: driveID) {
+            return name
+        }
+
+        return "Pasta do Google Drive" // Generic fallback if all fails
+    }
+
+    /// Search a lsjson listing for an item matching driveID and return its Name
+    private func findNameByID(driveID: String, args: [String]) async -> String? {
+        guard let result = try? await runProcess(args: args),
+              result.status == 0,
+              let data = result.output.data(using: .utf8),
+              let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            return nil
+        }
+        for item in items {
+            if let id = item["ID"] as? String, id == driveID,
+               let name = item["Name"] as? String, !name.isEmpty {
+                return name
+            }
+        }
+        return nil
     }
 
     private func getFolderNameViaBackend(driveID: String) async throws -> String? {
-        let result = try await runProcess(args: [
+        // Try normal first
+        let argsNormal = [
             "backend", "get",
             "\(remoteName):",
             "-o", "id=\(driveID)",
             "-o", "fields=name"
-        ])
+        ]
+        
+        if let name = try await runBackendGetName(args: argsNormal) {
+            return name
+        }
+        
+        // Try with shared-with-me
+        let argsShared = argsNormal + ["--drive-shared-with-me"]
+        return try await runBackendGetName(args: argsShared)
+    }
 
+    private func runBackendGetName(args: [String]) async throws -> String? {
+        let result = try await runProcess(args: args)
         guard result.status == 0 else { return nil }
 
         if let jsonData = result.output.data(using: .utf8),
@@ -133,7 +165,6 @@ final class RcloneService {
            let name = json["name"] as? String {
             return name
         }
-
         return nil
     }
 
