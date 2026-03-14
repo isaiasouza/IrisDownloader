@@ -57,20 +57,62 @@ final class YtDlpService {
     // MARK: - Fetch Info
 
     func fetchInfo(url: String) async throws -> MediaInfo {
+        let platform = SocialPlatform.detect(from: url)
+
+        // Spotify: usa oEmbed público (sem auth) para obter título + artista real
+        // O áudio tem DRM, então baixamos o equivalente no YouTube depois
+        if platform == .spotify {
+            let encodedURL = url.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? url
+            if let oEmbedURL = URL(string: "https://open.spotify.com/oembed?url=\(encodedURL)"),
+               let (data, _) = try? await URLSession.shared.data(from: oEmbedURL),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let title = json["title"] as? String {
+                let artist   = json["author_name"] as? String
+                let thumbnail = json["thumbnail_url"] as? String
+                // "Artista - Título" → termo de busca ideal no YouTube
+                let searchTitle = artist.map { "\($0) - \(title)" } ?? title
+                return MediaInfo(title: searchTitle, thumbnailURL: thumbnail, duration: nil, uploader: artist)
+            }
+            // Fallback: sem acesso à internet — usa slug da URL como busca
+            let slug = url.components(separatedBy: "/").last?
+                .components(separatedBy: "?").first ?? url
+            return MediaInfo(title: slug, thumbnailURL: nil, duration: nil, uploader: "Spotify")
+        }
+
+        let resolvedURL: String
+        if platform == .search {
+            resolvedURL = "ytsearch1:\(url)"
+        } else {
+            resolvedURL = url
+        }
+
         let args: [String] = [
             ytDlpPath,
             "--dump-json",
             "--no-playlist",
             "--quiet",
-            url
+            resolvedURL
         ]
 
         let result = try await run(args: args)
+        
+        // If output is empty, it means no results for search or error for URL
+        let output = result.output.trimmingCharacters(in: .newlines)
+        if output.isEmpty {
+            if platform == .search {
+                return MediaInfo(title: "Busca: \(url)", thumbnailURL: nil, duration: 0, uploader: nil)
+            }
+            throw YtDlpError.infoFetchFailed("Nenhuma informação encontrada. Verifique o link ou tente buscar pelo nome.")
+        }
+
         guard result.status == 0,
-              let data = result.output.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+              let data = output.data(using: .utf8),
+              let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? 
+                         (output.components(separatedBy: .newlines).compactMap { d in 
+                             try? JSONSerialization.jsonObject(with: d.data(using: .utf8) ?? Data()) as? [String: Any] 
+                         }.first)
         else {
-            throw YtDlpError.infoFetchFailed(result.output + result.error)
+            throw YtDlpError.infoFetchFailed("Falha ao processar dados do vídeo.")
         }
 
         let title        = (json["title"]     as? String) ?? url
@@ -87,23 +129,21 @@ final class YtDlpService {
     func startDownload(
         item: SocialDownloadItem,
         onProgress: @escaping (Double, String, String) -> Void,  // progress, speed, eta
-        onComplete: @escaping (Bool, String?) -> Void            // success, outputPath
+        onComplete: @escaping (Bool, String?, String?) -> Void  // success, outputPath, errorMsg
     ) -> Process {
 
         let outputTemplate = (item.destinationPath as NSString)
             .appendingPathComponent("%(title)s.%(ext)s")
 
-        // Prefix printed to stdout so we can extract the real output path
         let filePathPrefix = "__IRIS_FILEPATH__:"
 
         var args: [String] = [
             ytDlpPath,
             "--no-playlist",
             "--newline",
-            // Print real output path after download/conversion finishes
             "--print", "after_move:\(filePathPrefix)%(filepath)s",
-            // Separate progress lines from file path line
             "--progress-template", "PROG:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s",
+            "--restrict-filenames",
         ]
 
         if !ffmpegPath.isEmpty {
@@ -112,36 +152,37 @@ final class YtDlpService {
 
         switch item.format {
         case .video:
-            // Robust selector: works for Instagram/TikTok (combined streams) AND YouTube (separate)
-            // vcodec!=none ensures we NEVER get audio-only — all fallbacks require a video track
             let fmt: String
             switch item.quality {
-            case .best:
-                fmt = "bestvideo[vcodec!=none]+bestaudio/best[vcodec!=none]/best[height>=1]"
-            case .q1080:
-                fmt = "bestvideo[height<=1080][vcodec!=none]+bestaudio/best[height<=1080][vcodec!=none]/best[vcodec!=none]"
-            case .q720:
-                fmt = "bestvideo[height<=720][vcodec!=none]+bestaudio/best[height<=720][vcodec!=none]/best[vcodec!=none]"
-            case .q480:
-                fmt = "bestvideo[height<=480][vcodec!=none]+bestaudio/best[height<=480][vcodec!=none]/best[vcodec!=none]"
-            case .q360:
-                fmt = "bestvideo[height<=360][vcodec!=none]+bestaudio/best[height<=360][vcodec!=none]/best[vcodec!=none]"
+            case .best:  fmt = "bestvideo[vcodec!=none]+bestaudio/best[vcodec!=none]/best[height>=1]"
+            case .q1080: fmt = "bestvideo[height<=1080][vcodec!=none]+bestaudio/best[height<=1080][vcodec!=none]/best[vcodec!=none]"
+            case .q720:  fmt = "bestvideo[height<=720][vcodec!=none]+bestaudio/best[height<=720][vcodec!=none]/best[vcodec!=none]"
+            case .q480:  fmt = "bestvideo[height<=480][vcodec!=none]+bestaudio/best[height<=480][vcodec!=none]/best[vcodec!=none]"
+            case .q360:  fmt = "bestvideo[height<=360][vcodec!=none]+bestaudio/best[height<=360][vcodec!=none]/best[vcodec!=none]"
             }
-            args += [
-                "-f", fmt,
-                "--merge-output-format", "mp4",
-                "-o", outputTemplate
-            ]
+            args += ["-f", fmt, "--merge-output-format", "mp4", "-o", outputTemplate]
         case .audioOnly:
-            args += [
-                "-f", "bestaudio",
-                "-x", "--audio-format", "mp3",
-                "--audio-quality", "0",
-                "-o", outputTemplate
-            ]
+            args += ["-f", "bestaudio", "-x", "--audio-format", "mp3", "--audio-quality", "0", "-o", outputTemplate]
         }
 
-        args.append(item.url)
+        var downloadURL = item.url
+        if item.platform == .search {
+            downloadURL = "ytsearch1:\(item.url)"
+        } else if item.platform == .spotify {
+            let searchTerm = item.title
+                .replacingOccurrences(of: "^Spotify: ", with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if searchTerm.isEmpty || searchTerm.contains("://") || searchTerm.count < 5 {
+                // Sem título útil → busca por term genérico da URL
+                let slug = item.url.components(separatedBy: "/").last?
+                    .components(separatedBy: "?").first ?? item.url
+                downloadURL = "ytsearch1:\(slug)"
+            } else {
+                // Busca no YouTube Music (topic) para melhor match de áudio
+                downloadURL = "ytsearch1:\(searchTerm)"
+            }
+        }
+        args.append(downloadURL)
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
@@ -157,70 +198,64 @@ final class YtDlpService {
         process.standardError  = errPipe
 
         var capturedFilePath: String? = nil
+        var stderrBuffer: String = ""
 
         outPipe.fileHandleForReading.readabilityHandler = { handle in
-            guard let chunk = String(data: handle.availableData, encoding: .utf8), !chunk.isEmpty else { return }
+            let data = handle.availableData
+            guard let chunk = String(data: data, encoding: .utf8), !chunk.isEmpty else { return }
 
             for rawLine in chunk.components(separatedBy: .newlines) {
                 let l = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !l.isEmpty else { continue }
-
-                // Capture real file path
                 if l.hasPrefix(filePathPrefix) {
-                    let path = String(l.dropFirst(filePathPrefix.count))
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !path.isEmpty {
-                        capturedFilePath = path
-                    }
-                    continue
-                }
-
-                // Parse progress line: "PROG:50.5%|1.23MiB/s|00:12"
-                if l.hasPrefix("PROG:") {
+                    capturedFilePath = String(l.dropFirst(filePathPrefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                } else if l.hasPrefix("PROG:") {
                     let inner = String(l.dropFirst(5))
                     let parts = inner.components(separatedBy: "|")
-                    let pctStr = parts[0].replacingOccurrences(of: "%", with: "")
-                        .trimmingCharacters(in: .whitespaces)
+                    let pctStr = parts[0].replacingOccurrences(of: "%", with: "").trimmingCharacters(in: .whitespaces)
                     if let pct = Double(pctStr) {
                         let speed = parts.count > 1 ? parts[1].trimmingCharacters(in: .whitespaces) : ""
                         let eta   = parts.count > 2 ? parts[2].trimmingCharacters(in: .whitespaces) : ""
-                        DispatchQueue.main.async {
-                            onProgress(min(pct / 100.0, 0.99), speed, eta)
-                        }
+                        DispatchQueue.main.async { onProgress(min(pct / 100.0, 0.99), speed, eta) }
                     }
                 }
+            }
+        }
+
+        errPipe.fileHandleForReading.readabilityHandler = { handle in
+            if let chunk = String(data: handle.availableData, encoding: .utf8) {
+                stderrBuffer += chunk
             }
         }
 
         process.terminationHandler = { proc in
             outPipe.fileHandleForReading.readabilityHandler = nil
+            errPipe.fileHandleForReading.readabilityHandler = nil
 
-            // Flush remaining stdout
-            let remaining = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            let finalOut = String(data: (try? outPipe.fileHandleForReading.readToEnd()) ?? Data(), encoding: .utf8) ?? ""
+            let finalErr = String(data: (try? errPipe.fileHandleForReading.readToEnd()) ?? Data(), encoding: .utf8) ?? ""
+            stderrBuffer += finalErr
+
             var finalPath = capturedFilePath
-
-            // Fallback: scan remaining output for the filepath prefix
             if finalPath == nil {
-                for l in remaining.components(separatedBy: .newlines) {
+                for l in finalOut.components(separatedBy: .newlines) {
                     let t = l.trimmingCharacters(in: .whitespacesAndNewlines)
                     if t.hasPrefix(filePathPrefix) {
-                        finalPath = String(t.dropFirst(filePathPrefix.count))
-                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                        finalPath = String(t.dropFirst(filePathPrefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
                     }
                 }
             }
 
             let success = proc.terminationStatus == 0
-            DispatchQueue.main.async {
-                onComplete(success, success ? finalPath : nil)
-            }
+            let errorMsg = success ? nil : stderrBuffer.components(separatedBy: .newlines)
+                .filter { $0.contains("ERROR:") }
+                .first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Erro no processo"
+
+            DispatchQueue.main.async { onComplete(success, finalPath, errorMsg) }
         }
 
         try? process.run()
         return process
     }
-
-    // MARK: - Run helper
 
     private func run(args: [String]) async throws -> (output: String, error: String, status: Int32) {
         return try await withCheckedThrowingContinuation { cont in
@@ -242,12 +277,7 @@ final class YtDlpService {
                 let err = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
                 cont.resume(returning: (out, err, proc.terminationStatus))
             }
-
-            do {
-                try process.run()
-            } catch {
-                cont.resume(throwing: error)
-            }
+            try? process.run()
         }
     }
 }

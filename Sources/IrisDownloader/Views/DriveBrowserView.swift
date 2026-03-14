@@ -1,5 +1,10 @@
 import SwiftUI
 
+private enum BrowserMode: String, CaseIterable {
+    case myDrive      = "Meu Drive"
+    case sharedDrives = "Drives"
+}
+
 struct DriveFolder: Identifiable {
     let id: String
     let name: String
@@ -18,6 +23,17 @@ struct DriveBrowserView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var currentFolderID: String = "root"
+    @State private var browserMode: BrowserMode = .myDrive
+
+    // New folder states
+    @State private var showingNewFolderAlert = false
+    @State private var newFolderName = ""
+    @State private var targetParentIDForNewFolder: String? = nil
+    @State private var isCreatingFolder = false
+
+    private var rootLabel: String {
+        browserMode == .myDrive ? "Meu Drive" : "Drives"
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,12 +46,33 @@ struct DriveBrowserView: View {
                     .foregroundColor(AppTheme.textPrimary)
                 Spacer()
             }
-            .padding(16)
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 10)
+
+            // Mode picker
+            Picker("Modo", selection: $browserMode) {
+                ForEach(BrowserMode.allCases, id: \.self) { mode in
+                    HStack(spacing: 4) {
+                        Image(systemName: mode == .myDrive ? "externaldrive.fill" : "building.2.fill")
+                        Text(mode.rawValue)
+                    }
+                    .tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
+            .onChange(of: browserMode) { _, _ in
+                breadcrumb.removeAll()
+                currentFolderID = "root"
+                loadFolders(parentID: "root")
+            }
 
             // Breadcrumb
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 4) {
-                    breadcrumbButton(name: "Meu Drive", id: "root")
+                    breadcrumbButton(name: rootLabel, id: "root")
 
                     ForEach(Array(breadcrumb.enumerated()), id: \.element.id) { index, crumb in
                         Image(systemName: "chevron.right")
@@ -93,6 +130,21 @@ struct DriveBrowserView: View {
                     }
                     .padding(8)
                 }
+                .contextMenu {
+                    Button {
+                        promptForNewFolder(parentID: currentFolderID)
+                    } label: {
+                        Label("Nova Pasta", systemImage: "folder.badge.plus")
+                    }
+                    
+                    Divider()
+                    
+                    Button {
+                        loadFolders(parentID: currentFolderID)
+                    } label: {
+                        Label("Atualizar", systemImage: "arrow.clockwise")
+                    }
+                }
             }
 
             Divider().background(AppTheme.cardBorder)
@@ -103,7 +155,7 @@ struct DriveBrowserView: View {
                     Text("Pasta selecionada:")
                         .font(AppTheme.font(size: 10))
                         .foregroundColor(AppTheme.textMuted)
-                    Text(breadcrumb.last?.name ?? "Meu Drive")
+                    Text(breadcrumb.last?.name ?? rootLabel)
                         .font(AppTheme.font(size: 12, weight: .medium))
                         .foregroundColor(AppTheme.textPrimary)
                 }
@@ -131,10 +183,23 @@ struct DriveBrowserView: View {
             }
             .padding(12)
         }
-        .frame(width: 460, height: 450)
+        .frame(width: 460, height: 500)
         .background(AppTheme.bgSecondary)
         .onAppear {
             loadFolders(parentID: "root")
+        }
+        .alert("Nova Pasta", isPresented: $showingNewFolderAlert) {
+            TextField("Nome da pasta", text: $newFolderName)
+            Button("Cancelar", role: .cancel) {
+                newFolderName = ""
+                targetParentIDForNewFolder = nil
+            }
+            Button("Criar") {
+                createNewFolder()
+            }
+            .disabled(newFolderName.trimmingCharacters(in: .whitespaces).isEmpty)
+        } message: {
+            Text("Digite o nome para a nova pasta no Google Drive.")
         }
     }
 
@@ -181,6 +246,19 @@ struct DriveBrowserView: View {
         .onTapGesture {
             navigateInto(folder: folder)
         }
+        .contextMenu {
+            Button {
+                navigateInto(folder: folder)
+            } label: {
+                Label("Abrir", systemImage: "folder.fill")
+            }
+            
+            Button {
+                promptForNewFolder(parentID: folder.id)
+            } label: {
+                Label("Nova Pasta Aqui", systemImage: "folder.badge.plus")
+            }
+        }
     }
 
     private func navigateInto(folder: DriveFolder) {
@@ -206,6 +284,46 @@ struct DriveBrowserView: View {
         dismiss()
     }
 
+    // MARK: - New Folder Logic
+
+    private func promptForNewFolder(parentID: String) {
+        targetParentIDForNewFolder = parentID
+        newFolderName = ""
+        showingNewFolderAlert = true
+    }
+
+    private func createNewFolder() {
+        let name = newFolderName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        
+        let parentID = targetParentIDForNewFolder ?? currentFolderID
+        let rclonePath = manager.settings.rclonePath
+        let remoteName = self.remoteName ?? manager.settings.rcloneRemoteName
+        
+        isLoading = true
+        isCreatingFolder = true
+        
+        Task {
+            let service = RcloneService(rclonePath: rclonePath, remoteName: remoteName)
+            do {
+                _ = try await service.createFolder(name: name, parentID: parentID)
+                await MainActor.run {
+                    isLoading = false
+                    isCreatingFolder = false
+                    targetParentIDForNewFolder = nil
+                    newFolderName = ""
+                    loadFolders(parentID: currentFolderID)
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = "Erro ao criar pasta: \(error.localizedDescription)"
+                    isLoading = false
+                    isCreatingFolder = false
+                }
+            }
+        }
+    }
+
     private func loadFolders(parentID: String) {
         isLoading = true
         errorMessage = nil
@@ -213,6 +331,30 @@ struct DriveBrowserView: View {
 
         let rclonePath = manager.settings.rclonePath
         let remoteName = self.remoteName ?? manager.settings.rcloneRemoteName
+        let mode = browserMode
+
+        // Shared Drives root: list drives via `rclone backend drives`
+        if mode == .sharedDrives && parentID == "root" {
+            Task {
+                let service = RcloneService(rclonePath: rclonePath, remoteName: remoteName)
+                do {
+                    let drives = try await service.listSharedDrives()
+                    let parsed = drives.map { drive in
+                        DriveFolder(id: drive.id, name: drive.name, modTime: "")
+                    }
+                    await MainActor.run {
+                        folders = parsed
+                        isLoading = false
+                    }
+                } catch {
+                    await MainActor.run {
+                        errorMessage = "Erro ao listar Drives: \(error.localizedDescription)"
+                        isLoading = false
+                    }
+                }
+            }
+            return
+        }
 
         DispatchQueue.global().async {
             let process = Process()

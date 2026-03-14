@@ -157,8 +157,9 @@ struct SocialMediaView: View {
     }
 
     private func handlePasteLink() {
-        guard let clip = NSPasteboard.general.string(forType: .string),
-              clip.contains("://"), URL(string: clip) != nil else { return }
+        guard let clip = NSPasteboard.general.string(forType: .string), !clip.isEmpty else { return }
+        
+        // Open sheet with the clipped text
 
         if manager.settings.smartModeEnabled {
             // Auto add
@@ -205,7 +206,7 @@ struct SocialMediaView: View {
                 Text("Nenhum download social")
                     .font(AppTheme.font(size: 16, weight: .semibold))
                     .foregroundColor(AppTheme.textPrimary)
-                Text("Cole um link do YouTube, Instagram, TikTok\nou qualquer outra plataforma")
+                Text("Cole um link do YouTube, Instagram, TikTok,\nSpotify ou qualquer outra plataforma")
                     .font(AppTheme.font(size: 12))
                     .foregroundColor(AppTheme.textMuted)
                     .multilineTextAlignment(.center)

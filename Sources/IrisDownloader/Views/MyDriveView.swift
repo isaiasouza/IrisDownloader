@@ -17,6 +17,15 @@ struct MyDriveView: View {
     @State private var errorMessage: String?
     @State private var driveMode: DriveMode = .myDrive
     @State private var searchText: String = ""
+    @State private var dropTargetFolderID: String? = nil
+    @State private var isDropTargetingContent = false
+    @State private var uploadFeedback: String? = nil
+    
+    // New folder states
+    @State private var showingNewFolderAlert = false
+    @State private var newFolderName = ""
+    @State private var targetParentIDForNewFolder: String? = nil // nil means current folder
+    @State private var isCreatingFolder = false
 
     private var currentFolderID: String? {
         breadcrumb.last?.id
@@ -136,15 +145,77 @@ struct MyDriveView: View {
                 }
                 Spacer()
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 2) {
-                        ForEach(filteredItems) { item in
-                            itemRow(item)
+                ZStack {
+                    ScrollView {
+                        LazyVStack(spacing: 2) {
+                            ForEach(filteredItems) { item in
+                                itemRow(item)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                    }
+                    .onDrop(of: [.fileURL], isTargeted: $isDropTargetingContent) { providers in
+                        guard let folderID = currentFolderID else { return false }
+                        handleLocalDrop(providers, targetFolderID: folderID)
+                        return true
+                    }
+                    .contextMenu {
+                        Button {
+                            promptForNewFolder(parentID: currentFolderID)
+                        } label: {
+                            Label("Nova Pasta", systemImage: "folder.badge.plus")
+                        }
+                        
+                        Divider()
+                        
+                        Button {
+                            Task { await loadContents() }
+                        } label: {
+                            Label("Atualizar", systemImage: "arrow.clockwise")
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+
+                    // Overlay quando arrasta arquivo sobre a área de conteúdo
+                    if isDropTargetingContent, let folderID = currentFolderID {
+                        let folderName = breadcrumb.last?.name ?? "esta pasta"
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(AppTheme.success, style: StrokeStyle(lineWidth: 2, dash: [8]))
+                            .background(RoundedRectangle(cornerRadius: 12).fill(AppTheme.success.opacity(0.06)))
+                            .overlay(
+                                VStack(spacing: 8) {
+                                    Image(systemName: "arrow.up.to.line.circle.fill")
+                                        .font(.system(size: 32))
+                                        .foregroundColor(AppTheme.success)
+                                    Text("Soltar para enviar para")
+                                        .font(AppTheme.font(size: 13))
+                                        .foregroundColor(AppTheme.textSecondary)
+                                    Text(folderName)
+                                        .font(AppTheme.font(size: 14, weight: .semibold))
+                                        .foregroundColor(AppTheme.textPrimary)
+                                }
+                            )
+                            .padding(16)
+                            .allowsHitTesting(false)
+                            .id(folderID)
+                    }
                 }
+            }
+
+            // Feedback toast de upload
+            if let msg = uploadFeedback {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(AppTheme.success)
+                    Text(msg)
+                        .font(AppTheme.font(size: 12, weight: .medium))
+                        .foregroundColor(AppTheme.textPrimary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.bgTertiary))
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .padding(.bottom, 4)
             }
 
             Divider().background(AppTheme.cardBorder)
@@ -163,6 +234,19 @@ struct MyDriveView: View {
             breadcrumb.removeAll()
             selectedIDs.removeAll()
             await loadContents()
+        }
+        .alert("Nova Pasta", isPresented: $showingNewFolderAlert) {
+            TextField("Nome da pasta", text: $newFolderName)
+            Button("Cancelar", role: .cancel) {
+                newFolderName = ""
+                targetParentIDForNewFolder = nil
+            }
+            Button("Criar") {
+                createNewFolder()
+            }
+            .disabled(newFolderName.trimmingCharacters(in: .whitespaces).isEmpty)
+        } message: {
+            Text("Digite o nome para a nova pasta no Google Drive.")
         }
     }
 
@@ -310,11 +394,15 @@ struct MyDriveView: View {
 
     private func itemRow(_ item: DriveItem) -> some View {
         let isSelected = selectedIDs.contains(item.id)
+        let isDropTarget = dropTargetFolderID == item.id
+
         return HStack(spacing: 10) {
             // Folder/file icon
             Image(systemName: item.isFolder ? "folder.fill" : "doc.fill")
                 .font(AppTheme.font(size: 14))
-                .foregroundColor(item.isFolder ? AppTheme.warning : AppTheme.info)
+                .foregroundColor(item.isFolder
+                    ? (isDropTarget ? AppTheme.success : AppTheme.warning)
+                    : AppTheme.info)
 
             // Name — click navigates into folder
             Button {
@@ -338,10 +426,36 @@ struct MyDriveView: View {
                     .foregroundColor(AppTheme.textMuted)
             }
 
+            // Quick upload button (folders only) — abre file picker
             if item.isFolder {
-                Image(systemName: "chevron.right")
+                Button {
+                    pickFilesForUpload(targetFolderID: item.id, folderName: item.name)
+                } label: {
+                    Image(systemName: "arrow.up.circle")
+                        .font(AppTheme.font(size: 13))
+                        .foregroundColor(AppTheme.success.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .help("Enviar arquivos para \"\(item.name)\"")
+            }
+
+            // Quick download button (files only)
+            if !item.isFolder {
+                Button {
+                    downloadItem(item)
+                } label: {
+                    Image(systemName: "arrow.down.circle")
+                        .font(AppTheme.font(size: 13))
+                        .foregroundColor(AppTheme.accent.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .help("Baixar \"\(item.name)\"")
+            }
+
+            if item.isFolder {
+                Image(systemName: isDropTarget ? "arrow.up.to.line" : "chevron.right")
                     .font(AppTheme.font(size: 10))
-                    .foregroundColor(AppTheme.textMuted)
+                    .foregroundColor(isDropTarget ? AppTheme.success : AppTheme.textMuted)
             }
 
             // Checkbox
@@ -356,9 +470,54 @@ struct MyDriveView: View {
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(isSelected ? AppTheme.accent.opacity(0.08) : Color.clear)
+                .fill(
+                    isDropTarget
+                        ? AppTheme.success.opacity(0.10)
+                        : isSelected ? AppTheme.accent.opacity(0.08) : Color.clear
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(isDropTarget ? AppTheme.success.opacity(0.5) : Color.clear, lineWidth: 1)
+                )
         )
         .contentShape(Rectangle())
+        // Drag & drop de arquivos locais PARA esta pasta do Drive
+        .onDrop(of: [.fileURL], isTargeted: Binding(
+            get: { dropTargetFolderID == item.id },
+            set: { dropTargetFolderID = $0 ? item.id : nil }
+        )) { providers in
+            handleLocalDrop(providers, targetFolderID: item.id)
+            return true
+        }
+        .contextMenu {
+            if item.isFolder {
+                Button {
+                    navigateInto(item)
+                } label: {
+                    Label("Abrir", systemImage: "folder.fill")
+                }
+                
+                Button {
+                    promptForNewFolder(parentID: item.id)
+                } label: {
+                    Label("Nova Pasta Aqui", systemImage: "folder.badge.plus")
+                }
+            } else {
+                Button {
+                    downloadItem(item)
+                } label: {
+                    Label("Baixar", systemImage: "arrow.down.circle")
+                }
+            }
+            
+            Divider()
+            
+            Button {
+                toggleSelection(item)
+            } label: {
+                Label(isSelected ? "Desmarcar" : "Selecionar", systemImage: isSelected ? "circle.slash" : "checkmark.circle")
+            }
+        }
     }
 
     // MARK: - Footer
@@ -473,7 +632,116 @@ struct MyDriveView: View {
         }
     }
 
+    // MARK: - Drag & Drop Upload
+
+    private func handleLocalDrop(_ providers: [NSItemProvider], targetFolderID: String) {
+        var count = 0
+        for provider in providers {
+            if provider.canLoadObject(ofClass: URL.self) {
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    guard let url = url else { return }
+                    let link = "https://drive.google.com/drive/folders/\(targetFolderID)"
+                    Task { @MainActor in
+                        _ = await self.manager.addUpload(
+                            localPath: url.path,
+                            driveLink: link,
+                            remoteName: self.selectedRemote,
+                            force: true
+                        )
+                    }
+                }
+                count += 1
+            }
+        }
+        if count > 0 {
+            showUploadFeedback(count == 1 ? "Upload adicionado à fila" : "\(count) uploads adicionados à fila")
+        }
+    }
+
+    private func pickFilesForUpload(targetFolderID: String, folderName: String) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.message = "Escolha arquivos ou pastas para enviar para \"\(folderName)\""
+        guard panel.runModal() == .OK else { return }
+        let link = "https://drive.google.com/drive/folders/\(targetFolderID)"
+        var count = 0
+        for url in panel.urls {
+            Task {
+                _ = await manager.addUpload(
+                    localPath: url.path,
+                    driveLink: link,
+                    remoteName: selectedRemote,
+                    force: true
+                )
+            }
+            count += 1
+        }
+        if count > 0 {
+            showUploadFeedback(count == 1 ? "Upload adicionado à fila" : "\(count) uploads adicionados à fila")
+        }
+    }
+
+    // MARK: - New Folder Logic
+
+    private func promptForNewFolder(parentID: String?) {
+        targetParentIDForNewFolder = parentID
+        newFolderName = ""
+        showingNewFolderAlert = true
+    }
+
+    private func createNewFolder() {
+        let name = newFolderName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        
+        // Se targetParentIDForNewFolder é nil, cria na pasta atual
+        let parentID = targetParentIDForNewFolder ?? currentFolderID ?? "root"
+        
+        isLoading = true
+        isCreatingFolder = true
+        
+        let service = RcloneService(
+            rclonePath: manager.settings.rclonePath,
+            remoteName: selectedRemote
+        )
+        
+        Task {
+            do {
+                _ = try await service.createFolder(name: name, parentID: parentID)
+                await MainActor.run {
+                    isLoading = false
+                    isCreatingFolder = false
+                    targetParentIDForNewFolder = nil
+                    newFolderName = ""
+                    Task { await loadContents() }
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = "Erro ao criar pasta: \(error.localizedDescription)"
+                    isLoading = false
+                    isCreatingFolder = false
+                }
+            }
+        }
+    }
+
+    private func showUploadFeedback(_ message: String) {
+        withAnimation { uploadFeedback = message }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            withAnimation { uploadFeedback = nil }
+        }
+    }
+
     // MARK: - Download
+
+    private func downloadItem(_ item: DriveItem) {
+        let destination = manager.settings.defaultDestination
+        let link = item.isFolder
+            ? "https://drive.google.com/drive/folders/\(item.id)"
+            : "https://drive.google.com/file/d/\(item.id)/view"
+        manager.addDownload(link: link, destinationPath: destination, remoteName: selectedRemote, force: true)
+    }
 
     private func downloadSelected() {
         let destination = manager.settings.defaultDestination

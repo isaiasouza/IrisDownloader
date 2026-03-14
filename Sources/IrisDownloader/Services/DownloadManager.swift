@@ -230,7 +230,7 @@ final class DownloadManager: ObservableObject {
 
         let item = DownloadItem(
             driveID: parsed.id,
-            driveName: parsed.id,
+            driveName: "Buscando informações...",
             isFolder: parsed.isFolder,
             destinationPath: dest,
             remoteName: remote
@@ -248,20 +248,17 @@ final class DownloadManager: ObservableObject {
                 async let nameTask = service.getName(driveID: driveID)
                 async let sizeTask = service.getSize(driveID: driveID)
 
-                let name = try await nameTask
-                let sizeResult = try await sizeTask
-
-                item.driveName = name
-                if item.totalBytes == 0 {
-                    item.totalBytes = sizeResult.bytes
+                let (name, info) = try await (nameTask, sizeTask)
+                
+                await MainActor.run {
+                    item.driveName = name
+                    item.totalBytes = info.bytes
+                    item.totalFiles = info.count
+                    saveActiveStateNow()
                 }
-                if item.totalFiles == 0 {
-                    item.totalFiles = sizeResult.count
-                }
-                self.saveActiveState()
 
                 // Check disk space
-                if sizeResult.bytes > 0, let warning = self.checkDiskSpace(path: dest, needed: sizeResult.bytes) {
+                if info.bytes > 0, let warning = self.checkDiskSpace(path: dest, needed: info.bytes) {
                     item.status = .failed
                     item.errorMessage = warning
                     self.diskSpaceWarning = warning
@@ -734,10 +731,14 @@ final class DownloadManager: ObservableObject {
                     $0.status   = .downloading
                 }
             },
-            onComplete: { [weak self] success, outputPath in
+            onComplete: { [weak self] success, outputPath, errorMsg in
                 self?.updateSocial(id: item.id) {
-                    $0.status         = success ? .completed : .failed("Falha no download")
-                    $0.progress       = success ? 1.0 : $0.progress
+                    if success {
+                        $0.status = .completed
+                        $0.progress = 1.0
+                    } else {
+                        $0.status = .failed(errorMsg ?? "Falha no download")
+                    }
                     $0.outputFilePath = outputPath
                     $0.speed          = ""
                     $0.eta            = ""

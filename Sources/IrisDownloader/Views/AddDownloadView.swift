@@ -46,164 +46,207 @@ struct AddDownloadView: View {
     }
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 24) {
             // Header
-            HStack {
+            HStack(spacing: 12) {
                 Image(systemName: "plus.circle.fill")
-                    .font(AppTheme.font(size: 24))
+                    .font(.system(size: 28))
                     .foregroundColor(AppTheme.accent)
-                Text("Novo Download")
-                    .font(AppTheme.font(size: 20, weight: .bold))
-                    .foregroundColor(AppTheme.textPrimary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Novo Download")
+                        .font(AppTheme.font(size: 20, weight: .bold))
+                        .foregroundColor(AppTheme.textPrimary)
+                    Text("Adicione links do Google Drive para baixar")
+                        .font(AppTheme.font(size: 11))
+                        .foregroundColor(AppTheme.textMuted)
+                }
+                Spacer()
             }
+            .padding(.bottom, 4)
 
-            // Link input
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Links do Google Drive (um por linha)")
-                    .font(AppTheme.font(size: 13, weight: .semibold))
-                    .foregroundColor(AppTheme.textSecondary)
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Link input
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Links do Google Drive (um por linha)")
+                            .font(AppTheme.font(size: 13, weight: .semibold))
+                            .foregroundColor(AppTheme.textSecondary)
 
-                TextEditor(text: $linksText)
-                    .font(AppTheme.font(size: 13, design: .monospaced))
-                    .frame(height: 100)
-                    .scrollContentBackground(.hidden)
-                    .padding(8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(AppTheme.bgTertiary)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .strokeBorder(AppTheme.cardBorder)
+                        TextEditor(text: $linksText)
+                            .font(AppTheme.font(size: 13, design: .monospaced))
+                            .frame(height: 120)
+                            .scrollContentBackground(.hidden)
+                            .padding(10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(AppTheme.bgTertiary)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .strokeBorder(AppTheme.cardBorder)
+                                    )
                             )
-                    )
 
-                if hasInput {
-                    HStack(spacing: 6) {
-                        if validCount > 0 {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(AppTheme.success)
-                            Text("\(validCount) link(s) válido(s)")
-                                .font(AppTheme.font(size: 11))
-                                .foregroundColor(AppTheme.success)
+                        if hasInput {
+                            HStack(spacing: 6) {
+                                if validCount > 0 {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(AppTheme.success)
+                                    Text("\(validCount) link(s) válido(s)")
+                                        .font(AppTheme.font(size: 11))
+                                        .foregroundColor(AppTheme.success)
+                                }
+                                if validCount < totalLines {
+                                    if validCount > 0 {
+                                        Text("·")
+                                            .foregroundColor(AppTheme.textMuted)
+                                    }
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(AppTheme.error)
+                                    Text("\(totalLines - validCount) inválido(s)")
+                                        .font(AppTheme.font(size: 11))
+                                        .foregroundColor(AppTheme.error)
+                                }
+                            }
+                            .transition(.opacity)
+                            .animation(.easeInOut, value: validCount)
                         }
-                        if validCount < totalLines {
-                            if validCount > 0 {
-                                Text("·")
+                    }
+
+                    // Remote selector (multiple accounts)
+                    if manager.availableRemotes.count > 1 {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Conta Google Drive")
+                                .font(AppTheme.font(size: 13, weight: .semibold))
+                                .foregroundColor(AppTheme.textSecondary)
+
+                            Picker("Remote", selection: $selectedRemote) {
+                                ForEach(manager.availableRemotes, id: \.self) { remote in
+                                    Text(remote).tag(remote)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .padding(4)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.bgTertiary))
+                        }
+                    }
+
+                    // Destination Section
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Destino")
+                                    .font(AppTheme.font(size: 13, weight: .bold))
+                                    .foregroundColor(AppTheme.textPrimary)
+                                Text("Onde os arquivos serão salvos localmente")
+                                    .font(AppTheme.font(size: 11))
                                     .foregroundColor(AppTheme.textMuted)
                             }
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(AppTheme.error)
-                            Text("\(totalLines - validCount) inválido(s)")
-                                .font(AppTheme.font(size: 11))
-                                .foregroundColor(AppTheme.error)
+                            Spacer()
+                            Toggle("", isOn: $useCustomDestination)
+                                .toggleStyle(.switch)
+                                .tint(AppTheme.accent)
+                                .labelsHidden()
                         }
-                    }
-                    .transition(.opacity)
-                    .animation(.easeInOut, value: validCount)
-                }
-            }
 
-            // Remote selector (multiple accounts)
-            if manager.availableRemotes.count > 1 {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Conta Google Drive")
-                        .font(AppTheme.font(size: 13, weight: .semibold))
-                        .foregroundColor(AppTheme.textSecondary)
+                        if useCustomDestination {
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack(spacing: 10) {
+                                    TextField("Caminho de destino", text: $customDestination)
+                                        .textFieldStyle(.plain)
+                                        .font(AppTheme.font(size: 12))
+                                        .padding(8)
+                                        .background(RoundedRectangle(cornerRadius: 6).fill(AppTheme.bgTertiary))
+                                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(AppTheme.cardBorder))
 
-                    Picker("Remote", selection: $selectedRemote) {
-                        ForEach(manager.availableRemotes, id: \.self) { remote in
-                            Text(remote).tag(remote)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                }
-            }
+                                    Button(action: chooseFolder) {
+                                        Text("Escolher...")
+                                            .font(AppTheme.font(size: 12, weight: .medium))
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 6)
+                                            .background(Capsule().stroke(AppTheme.textSecondary, lineWidth: 1))
+                                            .foregroundColor(AppTheme.textPrimary)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
 
-            // Destination
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Destino")
-                    .font(AppTheme.font(size: 13, weight: .semibold))
-                    .foregroundColor(AppTheme.textSecondary)
+                                // New folder inline
+                                if showNewLocalFolder {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "folder.badge.plus")
+                                            .foregroundColor(AppTheme.accent)
+                                            .font(AppTheme.font(size: 13))
 
-                Toggle("Usar pasta personalizada", isOn: $useCustomDestination)
-                    .toggleStyle(.switch)
-                    .tint(AppTheme.accent)
+                                        TextField("Nome da nova pasta...", text: $newLocalFolderName)
+                                            .textFieldStyle(.roundedBorder)
+                                            .font(AppTheme.font(size: 12))
+                                            .onSubmit { createLocalFolder() }
 
-                if useCustomDestination {
-                    HStack {
-                        TextField("Caminho", text: $customDestination)
-                            .textFieldStyle(.roundedBorder)
-                            .font(AppTheme.font(size: 13))
+                                        Button(action: createLocalFolder) {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundColor(AppTheme.success)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .disabled(newLocalFolderName.trimmingCharacters(in: .whitespaces).isEmpty)
 
-                        Button("Escolher...") {
-                            chooseFolder()
-                        }
-                    }
+                                        Button {
+                                            showNewLocalFolder = false
+                                            newLocalFolderName = ""
+                                            newLocalFolderError = nil
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .foregroundColor(AppTheme.textMuted)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
 
-                    // New folder inline
-                    if showNewLocalFolder {
-                        HStack(spacing: 8) {
-                            Image(systemName: "folder.badge.plus")
-                                .foregroundColor(AppTheme.accent)
-                                .font(AppTheme.font(size: 13))
-
-                            TextField("Nome da nova pasta...", text: $newLocalFolderName)
-                                .textFieldStyle(.roundedBorder)
-                                .font(AppTheme.font(size: 12))
-                                .onSubmit { createLocalFolder() }
-
-                            Button(action: createLocalFolder) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(AppTheme.success)
+                                    if let err = newLocalFolderError {
+                                        Text(err)
+                                            .font(AppTheme.font(size: 11))
+                                            .foregroundColor(AppTheme.error)
+                                    }
+                                } else {
+                                    Button {
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            showNewLocalFolder = true
+                                        }
+                                    } label: {
+                                        HStack(spacing: 5) {
+                                            Image(systemName: "folder.badge.plus")
+                                            Text("Nova Pasta")
+                                        }
+                                        .font(AppTheme.font(size: 11, weight: .medium))
+                                        .foregroundColor(AppTheme.accent)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
                             }
-                            .buttonStyle(.plain)
-                            .disabled(newLocalFolderName.trimmingCharacters(in: .whitespaces).isEmpty)
-
-                            Button {
-                                showNewLocalFolder = false
-                                newLocalFolderName = ""
-                                newLocalFolderError = nil
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(AppTheme.textMuted)
+                        } else {
+                            HStack(spacing: 8) {
+                                Image(systemName: "folder.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(AppTheme.accent.opacity(0.8))
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Pasta Padrão")
+                                        .font(AppTheme.font(size: 11, weight: .bold))
+                                        .foregroundColor(AppTheme.textPrimary)
+                                    Text(manager.settings.defaultDestination)
+                                        .font(AppTheme.font(size: 10))
+                                        .foregroundColor(AppTheme.textMuted)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                }
                             }
-                            .buttonStyle(.plain)
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.bgTertiary.opacity(0.5)))
                         }
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-
-                        if let err = newLocalFolderError {
-                            Text(err)
-                                .font(AppTheme.font(size: 11))
-                                .foregroundColor(AppTheme.error)
-                        }
-                    } else {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                showNewLocalFolder = true
-                            }
-                        } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: "folder.badge.plus")
-                                Text("Nova Pasta")
-                            }
-                            .font(AppTheme.font(size: 11, weight: .medium))
-                            .foregroundColor(AppTheme.accent)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                } else {
-                    HStack(spacing: 4) {
-                        Image(systemName: "folder.fill")
-                            .font(AppTheme.font(size: 11))
-                            .foregroundColor(AppTheme.textMuted)
-                        Text(manager.settings.defaultDestination)
-                            .font(AppTheme.font(size: 11))
-                            .foregroundColor(AppTheme.textMuted)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
                     }
                 }
+                .padding(.vertical, 2)
             }
+            .scrollIndicators(.never)
 
             Spacer()
 
@@ -254,9 +297,11 @@ struct AddDownloadView: View {
                 .disabled(validCount == 0)
             }
         }
-        .padding(24)
-        .frame(width: 520, height: 440)
+        .padding(28)
+        .frame(width: 560, height: 580)
         .background(AppTheme.bgSecondary)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(AppTheme.cardBorder))
         .sheet(isPresented: $showSelectiveDownload) {
             if let folder = singleFolderLink {
                 SelectiveDownloadView(

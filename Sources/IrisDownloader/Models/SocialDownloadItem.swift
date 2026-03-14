@@ -7,6 +7,8 @@ enum SocialPlatform: String, Codable {
     case instagram = "Instagram"
     case tiktok   = "TikTok"
     case twitter  = "Twitter/X"
+    case spotify  = "Spotify"
+    case search   = "Busca"
     case other    = "Web"
 
     var icon: String {
@@ -15,16 +17,23 @@ enum SocialPlatform: String, Codable {
         case .instagram: return "camera.fill"
         case .tiktok:    return "music.note.tv.fill"
         case .twitter:   return "bird.fill"
+        case .spotify:   return "music.note.list"
+        case .search:    return "magnifyingglass"
         case .other:     return "globe"
         }
     }
 
     static func detect(from urlString: String) -> SocialPlatform {
-        let u = urlString.lowercased()
+        let u = urlString.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         if u.contains("youtube.com") || u.contains("youtu.be") { return .youtube }
         if u.contains("instagram.com")                          { return .instagram }
         if u.contains("tiktok.com")                            { return .tiktok }
         if u.contains("twitter.com") || u.contains("x.com")   { return .twitter }
+        if u.contains("spotify.com")                            { return .spotify }
+        
+        // If it doesn't look like a URL with a scheme, it's likely a search query
+        if !u.contains("://") && !u.isEmpty { return .search }
+        
         return .other
     }
 }

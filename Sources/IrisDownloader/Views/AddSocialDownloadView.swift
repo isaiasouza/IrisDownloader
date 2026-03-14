@@ -40,7 +40,7 @@ struct AddSocialDownloadView: View {
                     Text("Download Social Media")
                         .font(AppTheme.font(size: 18, weight: .bold))
                         .foregroundColor(AppTheme.textPrimary)
-                    Text("YouTube · Instagram · TikTok · e mais")
+                    Text("YouTube · Instagram · TikTok · Spotify")
                         .font(AppTheme.font(size: 11))
                         .foregroundColor(AppTheme.textMuted)
                 }
@@ -100,12 +100,12 @@ struct AddSocialDownloadView: View {
                         Text("Adicionar download")
                     }
                     .padding(.horizontal, 16).padding(.vertical, 9)
-                    .background(Capsule().fill(isValidURL ? AppTheme.accent : AppTheme.bgTertiary))
-                    .foregroundColor(isValidURL ? .white : AppTheme.textMuted)
+                    .background(Capsule().fill(!urlText.isEmpty ? AppTheme.accent : AppTheme.bgTertiary))
+                    .foregroundColor(!urlText.isEmpty ? .white : AppTheme.textMuted)
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.return)
-                .disabled(!isValidURL)
+                .disabled(urlText.isEmpty)
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 16)
@@ -118,6 +118,9 @@ struct AddSocialDownloadView: View {
             if let clip = NSPasteboard.general.string(forType: .string),
                clip.contains("://"), URL(string: clip) != nil {
                 urlText = clip
+                if SocialPlatform.detect(from: clip) == .spotify {
+                    selectedFormat = .audioOnly
+                }
                 fetchInfoDebounced()
             }
         }
@@ -132,17 +135,23 @@ struct AddSocialDownloadView: View {
                 .foregroundColor(AppTheme.textSecondary)
 
             HStack(spacing: 8) {
-                if isValidURL {
+                if !urlText.isEmpty {
                     Image(systemName: platform.icon)
                         .font(.system(size: 14))
                         .foregroundColor(AppTheme.accent)
                         .frame(width: 20)
                 }
-                TextField("Cole o link aqui...", text: $urlText)
+                TextField("Cole o link ou digite o nome da música...", text: $urlText)
                     .textFieldStyle(.plain)
                     .font(AppTheme.font(size: 13, design: .monospaced))
                     .foregroundColor(AppTheme.textPrimary)
-                    .onChange(of: urlText) { _, _ in fetchInfoDebounced() }
+                    .onChange(of: urlText) { _, newVal in
+                        // Auto-seleciona áudio para Spotify (sem vídeo disponível)
+                        if SocialPlatform.detect(from: newVal) == .spotify {
+                            selectedFormat = .audioOnly
+                        }
+                        fetchInfoDebounced()
+                    }
 
                 if isFetchingInfo {
                     ProgressView().scaleEffect(0.7).frame(width: 18, height: 18)
@@ -157,9 +166,27 @@ struct AddSocialDownloadView: View {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(AppTheme.bgTertiary)
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(
-                        isValidURL ? AppTheme.accent.opacity(0.4) : AppTheme.cardBorder
+                        !urlText.isEmpty ? AppTheme.accent.opacity(0.4) : AppTheme.cardBorder
                     ))
             )
+
+            if platform == .spotify {
+                HStack(spacing: 8) {
+                    Image(systemName: "info.circle.fill").foregroundColor(AppTheme.accent)
+                    Text("Links do Spotify usam busca automática no YouTube Music para evitar erros de DRM.")
+                        .font(AppTheme.font(size: 11))
+                        .foregroundColor(AppTheme.textSecondary)
+                }
+                .padding(.top, 4)
+            } else if platform == .search && !urlText.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundColor(AppTheme.textMuted)
+                    Text("Isso será tratado como um termo de busca.")
+                        .font(AppTheme.font(size: 11))
+                        .foregroundColor(AppTheme.textMuted)
+                }
+                .padding(.top, 4)
+            }
         }
     }
 

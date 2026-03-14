@@ -136,6 +136,15 @@ struct AddUploadView: View {
                             .fill(AppTheme.accent.opacity(0.08))
                             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(AppTheme.accent.opacity(0.2)))
                     )
+                    .contextMenu {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showNewDriveFolder = true
+                            }
+                        } label: {
+                            Label("Nova Pasta", systemImage: "folder.badge.plus")
+                        }
+                    }
 
                     // New Folder inline UI
                     if showNewDriveFolder {
