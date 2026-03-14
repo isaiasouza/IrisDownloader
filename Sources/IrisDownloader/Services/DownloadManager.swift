@@ -357,9 +357,11 @@ final class DownloadManager: ObservableObject {
 
         let service = item.remoteName.isEmpty ? rcloneService : rcloneServiceFor(remote: item.remoteName)
 
-        // Pass folderName when preserve-structure is on — rclone will create
-        // destinationPath/folderName instead of copying content flat.
-        let folderName: String? = (settings.preserveDriveStructure && item.isFolder) ? item.driveName : nil
+        // Sempre cria subpasta com o nome do Drive para manter organização.
+        // Só usa o nome se ele já foi resolvido (não é o placeholder de busca).
+        let resolvedName = item.driveName
+        let nameIsReady = !resolvedName.isEmpty && resolvedName != "Buscando informações..."
+        let folderName: String? = (item.isFolder && nameIsReady) ? resolvedName : nil
 
         let process = service.startDownload(
             driveID: item.driveID,
@@ -643,6 +645,14 @@ final class DownloadManager: ObservableObject {
     }
 
     func openInFinder(_ item: DownloadItem) {
+        // Se foi um download de pasta com nome conhecido, abre a subpasta criada
+        if item.isFolder && !item.driveName.isEmpty && item.driveName != "Buscando informações..." {
+            let subPath = (item.destinationPath as NSString).appendingPathComponent(item.driveName)
+            if FileManager.default.fileExists(atPath: subPath) {
+                NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: subPath)
+                return
+            }
+        }
         NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: item.destinationPath)
     }
 
